@@ -4,8 +4,13 @@ const $status = document.getElementById('status');
 const $grid = document.getElementById('grid');
 const $log = document.getElementById('log');
 const $dateInput = document.getElementById('dateInput');
+const $countBadge = document.getElementById('countBadge');
+const $searchBox = document.getElementById('searchBox');
+const $searchInput = document.getElementById('searchInput');
+const $leagueSelect = document.getElementById('leagueSelect');
 
 let allMatches = [];
+let currentFilter = 'all';
 
 function log(msg, cls=''){
   const d=document.createElement('div');
@@ -37,9 +42,10 @@ function cardA(m){
   const p = m.probabilities || {"1":0,"X":0,"2":0};
   const total = (p['1']+p['X']+p['2']).toFixed(1);
   const confColor = m.confidence==='Alta'?'#1ee07a':m.confidence==='Media'?'#ffcc00':'#ff8a8a';
+  const ligaEmoji = m.league_code==='mex.1'?'🇲🇽':m.league_code==='usa.1'?'🇺🇸':m.league_code==='eng.1'?'🏴󠁧󠁢󠁥󠁮󠁧󠁿':m.league_code?.includes('champions')?'🏆':'⚽';
   return `
-  <div class="card">
-    <div class="badge-row"><span class="tag">A - CALENDARIO</span><span class="league">${esc(m.league||'Futbol')} • ${esc(m.time||'')} • ${esc(m.date||'')}</span></div>
+  <div class="card" data-league="${esc(m.league||'')}" data-home="${esc(m.home||'')}" data-away="${esc(m.away||'')}">
+    <div class="badge-row"><span class="tag">${ligaEmoji} ${esc(m.league_code||'')}</span><span class="league">${esc(m.league||'Futbol')} • ${esc(m.time||'')} • ${esc(m.date||'')}</span></div>
     <div class="teams">${esc(m.home)} <span style="color:#8aa0c8">vs</span> ${esc(m.away)}</div>
     <div class="prob-row">
       <span class="prob">1: ${p['1']}%</span>
@@ -54,71 +60,133 @@ function cardA(m){
   </div>`;
 }
 
+function getFiltered(){
+  let filtered = allMatches;
+  if(currentFilter==='top'){
+    filtered = allMatches.filter(m=>m.confidence==='Alta' || m.confidence==='Media');
+  }else if(currentFilter==='liga-mx'){
+    filtered = allMatches.filter(m=>(m.league||'').toLowerCase().includes('mx') || m.league_code==='mex.1');
+  }else if(currentFilter==='mls'){
+    filtered = allMatches.filter(m=>(m.league||'').toLowerCase().includes('mls') || m.league_code==='usa.1');
+  }else if(currentFilter==='champions'){
+    filtered = allMatches.filter(m=>(m.league||'').toLowerCase().includes('champions') || (m.league_code||'').includes('champions'));
+  }else if(currentFilter==='europa'){
+    filtered = allMatches.filter(m=>['eng.1','esp.1','ita.1','ger.1','fra.1'].includes(m.league_code));
+  }else if(currentFilter==='search'){
+    const q = ($searchInput.value||'').toLowerCase();
+    const liga = $leagueSelect.value;
+    filtered = allMatches.filter(m=>{
+      const matchQ = !q || m.home.toLowerCase().includes(q) || m.away.toLowerCase().includes(q);
+      const matchLiga = liga==='all' || (m.league||'').includes(liga);
+      return matchQ && matchLiga;
+    });
+  }else if(currentFilter==='combinada'){
+    filtered = allMatches.filter(m=>m.confidence==='Alta' || m.confidence==='Media').slice(0,6);
+  }else if(currentFilter==='progol'){
+    filtered = allMatches.slice(0,14); // 14 partidos para progol
+  }
+  return filtered;
+}
+
 function renderAll(){
-  if(allMatches.length===0){
-    $grid.innerHTML=`<div class="card">No hay partidos. Sincroniza con ESPN.</div>`;
+  const filtered = getFiltered();
+  $countBadge.textContent = `${filtered.length} partidos / ${allMatches.length} total`;
+
+  if(filtered.length===0){
+    $grid.innerHTML=`<div class="card">No hay partidos para este filtro. Prueba otro filtro o sincroniza.</div>`;
     return;
   }
-  // A - Calendario (todos)
-  // B - Individual (mismo que A por ahora)
-  // C - Top Picks (confianza Alta/Media)
-  const topPicks = allMatches.filter(m=>m.confidence==='Alta' || m.confidence==='Media').sort((a,b)=>Math.max(b.probabilities['1'],b.probabilities['2'])-Math.max(a.probabilities['1'],a.probabilities['2'])).slice(0,6);
 
-  let html = `<div class="section-title">📅 A - CALENDARIO (${allMatches.length} partidos reales)</div>`;
-  html += allMatches.map(cardA).join('');
-
-  if(topPicks.length>0){
-    html += `<div class="section-title">🏆 C - TOP PICKS (Alta/Media confianza)</div>`;
-    html += topPicks.map(cardA).join('');
-
-    // D - Combinadas: 0.70*0.65*0.60=27.3%
-    if(topPicks.length>=3){
-      const sel = topPicks.slice(0,3).map(m=>{
+  let html = '';
+  if(currentFilter==='all'){
+    html += `<div class="section-title">⊙ Partidos del día (${filtered.length} partidos - 15 ligas mundiales)</div>`;
+    html += filtered.map(cardA).join('');
+  }else if(currentFilter==='top'){
+    html += `<div class="section-title">★ Top Picks - Alta/Media confianza (${filtered.length})</div>`;
+    html += filtered.map(cardA).join('');
+  }else if(currentFilter==='combinada'){
+    html += `<div class="section-title">∽ Combinadas (${filtered.length} selecciones)</div>`;
+    html += filtered.map(cardA).join('');
+    if(filtered.length>=2){
+      const sel = filtered.slice(0,3).map(m=>{
         const bestProb = Math.max(m.probabilities['1'], m.probabilities['2'], m.probabilities['X']);
         return {match: `${m.home} vs ${m.away}`, prob: bestProb/100};
       });
       const conjunta = sel.reduce((acc,s)=>acc*s.prob,1)*100;
-      html += `<div class="section-title">🎲 D - COMBINADAS (Prob conjunta = ${conjunta.toFixed(1)}%)</div>`;
-      html += `<div class="card combo"><div class="league">Formula: ${sel.map(s=>`${(s.prob*100).toFixed(1)}%`).join(' × ')} = ${conjunta.toFixed(2)}%</div>`;
+      html += `<div class="card combo"><div class="league">Fórmula: ${sel.map(s=>`${(s.prob*100).toFixed(1)}%`).join(' × ')} = ${conjunta.toFixed(2)}%</div>`;
       sel.forEach(s=>{ html+=`<div class="meta">• ${esc(s.match)} - ${(s.prob*100).toFixed(1)}%</div>`; });
-      html+=`<div class="meta" style="margin-top:8px;color:#ffcc00">⚠️ Probabilidad != garantia. Conjunta baja con muchas selecciones.</div></div>`;
+      html+=`<div class="meta" style="margin-top:8px;color:#ffcc00">⚠️ Probabilidad != garantía. Conjunta baja con muchas selecciones.</div></div>`;
     }
+  }else if(currentFilter==='progol'){
+    html += `<div class="section-title">▤ Progol - 14 partidos (quiniela mexicana)</div>`;
+    html += filtered.map((m,i)=>`<div class="card progol"><div class="progol-num">${i+1}</div>`+cardA(m)+`</div>`).join('');
+  }else if(currentFilter==='liga-mx'){
+    html += `<div class="section-title">🇲🇽 Liga MX (${filtered.length} partidos)</div>`;
+    html += filtered.map(cardA).join('');
+  }else if(currentFilter==='mls'){
+    html += `<div class="section-title">🇺🇸 MLS (${filtered.length} partidos)</div>`;
+    html += filtered.map(cardA).join('');
+  }else if(currentFilter==='champions'){
+    html += `<div class="section-title">🏆 Champions League (${filtered.length} partidos)</div>`;
+    html += filtered.map(cardA).join('');
+  }else if(currentFilter==='europa'){
+    html += `<div class="section-title">🏅 Top 5 Europa (Premier, LaLiga, Serie A, Bundesliga, Ligue 1) - ${filtered.length}</div>`;
+    html += filtered.map(cardA).join('');
+  }else if(currentFilter==='search'){
+    html += `<div class="section-title">🔍 Búsqueda: "${esc($searchInput.value||'')}" en ${esc($leagueSelect.value)} - ${filtered.length} resultados</div>`;
+    html += filtered.map(cardA).join('');
   }
 
-  // G - Resultados / Transparencia
-  html += `<div class="section-title">📊 G - TRANSPARENCIA / RESULTADOS</div>`;
-  html += `<div class="card"><div class="meta">Probabilidad != recomendacion segura.</div><div class="meta">Suma 1X2 ~100% (validado en cada tarjeta).</div><div class="meta">Fuente: ESPN_ALL + Ensemble Poisson 58% / ELO 16% / Forma 10% / MonteCarlo 6000 sims 16%</div><div class="meta">Actualizacion: ${new Date().toLocaleString()}</div><div class="meta">Version: V64.6.0 REAL - Paso 3 FINAL</div></div>`;
+  html += `<div class="section-title">📊 Transparencia</div>`;
+  html += `<div class="card"><div class="meta">Probabilidad != recomendación segura. Suma 1X2 ~100% validado.</div><div class="meta">Fuente: ESPN_MULTI_15LIGAS + Ensemble 58%/16%/10%/16% 6000 sims</div><div class="meta">Ligas: Premier, LaLiga, Serie A, Bundesliga, Ligue1, Liga MX, MLS, Brasileirao, Argentina, Champions, Europa, Conference, Concachampions</div><div class="meta">Versión: V64.6.0 Paso5 Multi-Liga Mundial</div></div>`;
 
   $grid.innerHTML = html;
 }
 
 async function loadFast(){
   const date=$dateInput.value||new Date().toISOString().slice(0,10);
-  $status.textContent=`Cargando ${date} + calculando Ensemble Poisson 58%...`;
-  $grid.innerHTML='';
+  $status.textContent=`Cargando ${date} - 15 ligas...`;
   try{
     const data=await api(`/api/calendar/fast?date=${date}`);
     allMatches = data.matches || [];
-    $status.textContent=`${data.count} partidos reales de ${date} - ${data.source||''} - 7 tarjetas A-G`;
+    $status.textContent=`${data.count} partidos reales de ${date} - ${data.source||''}`;
     renderAll();
   }catch(e){ $status.textContent=`Error: ${e.message}`; }
 }
 async function refresh(){
   const date=$dateInput.value||new Date().toISOString().slice(0,10);
-  $status.textContent=`Sincronizando ${date} con ESPN (5s reales)...`;
+  $status.textContent=`Sincronizando ${date} con 15 ligas ESPN...`;
   try{
     await api(`/api/calendar?date=${date}&refresh=1`);
-    log('Sincronizacion iniciada, esperando 5s...');
-    setTimeout(loadFast,5000);
+    log('Sincronizando 15 ligas, esperando 8s...');
+    setTimeout(loadFast,8000);
   }catch(e){ $status.textContent=`Error sync: ${e.message}`; }
 }
+
+// Menu lateral
+document.querySelectorAll('.menu-item').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.menu-item').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    currentFilter = btn.dataset.filter;
+    if(currentFilter==='search'){
+      $searchBox.style.display='block';
+    }else{
+      $searchBox.style.display='none';
+    }
+    renderAll();
+  });
+});
+$searchInput.addEventListener('input', renderAll);
+$leagueSelect.addEventListener('change', renderAll);
+
 document.getElementById('loadBtn').addEventListener('click',loadFast);
 document.getElementById('refreshBtn').addEventListener('click',refresh);
 (async()=>{
   $dateInput.value=new Date().toISOString().slice(0,10);
   try{
     const h=await api('/api/health');
-    $status.textContent=`API Conectada: ${h.version} - ${h.records} partidos en BD`;
+    $status.textContent=`API: ${h.version} - ${h.records} partidos`;
     loadFast();
-  }catch{ $status.textContent='API no conecta. Revisa Render.'; }
+  }catch{ $status.textContent='API no conecta.'; }
 })();

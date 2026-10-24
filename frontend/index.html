@@ -4,21 +4,53 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LiAn V64.6.0 REAL MODE</title>
-<link rel="stylesheet" href="style.css">
+<title>LiAn V64.6.0 - Multi-Liga Mundial</title>
+<link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
-<div class="header">
-<h1>LiAn V64.6.0 <span class="badge">REAL - ESPN_ALL</span></h1>
-<p id="status">Conectando API...</p>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="logo">LiAn <span>V64.6.0</span><br><small>REAL - MULTI-LIGA</small></div>
+    <nav class="menu">
+      <button class="menu-item active" data-filter="all">⊙ Partidos del día</button>
+      <button class="menu-item" data-filter="top">★ Top Picks</button>
+      <button class="menu-item" data-filter="combinada">∽ Combinadas</button>
+      <button class="menu-item" data-filter="progol">▤ Progol</button>
+      <button class="menu-item" data-filter="liga-mx">🇲🇽 Liga MX</button>
+      <button class="menu-item" data-filter="mls">🇺🇸 MLS</button>
+      <button class="menu-item" data-filter="champions">🏆 Champions</button>
+      <button class="menu-item" data-filter="europa">🏅 Europa Top5</button>
+      <button class="menu-item" data-filter="search">🔍 Buscar</button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="search-box" id="searchBox" style="display:none">
+        <input type="text" id="searchInput" placeholder="Buscar equipo...">
+        <select id="leagueSelect">
+          <option value="all">Todas las ligas</option>
+          <option value="Premier League">Premier League</option>
+          <option value="La Liga">La Liga</option>
+          <option value="Liga MX">Liga MX</option>
+          <option value="MLS">MLS</option>
+          <option value="Serie A">Serie A</option>
+          <option value="Bundesliga">Bundesliga</option>
+          <option value="Champions League">Champions</option>
+        </select>
+      </div>
+      <div class="status" id="status">Cargando...</div>
+      <div class="version">Ensemble 58% Poisson / 16% ELO / 10% Forma / 16% MC6000<br>Prob != recomendación</div>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="top-bar">
+      <input type="date" id="dateInput">
+      <button id="loadBtn">Cargar partidos reales</button>
+      <button id="refreshBtn" class="primary">Sincronizar con ESPN (15 ligas)</button>
+      <span class="badge" id="countBadge">0 partidos</span>
+    </div>
+    <div class="grid" id="grid"></div>
+    <div class="log" id="log"></div>
+  </main>
 </div>
-<div class="controls">
-<input type="date" id="dateInput">
-<button id="loadBtn">Cargar partidos reales</button>
-<button id="refreshBtn">Sincronizar con ESPN (3s)</button>
-</div>
-<div id="grid" class="grid"></div>
-<div id="log" class="log"></div>
-<script src="app.js"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>
