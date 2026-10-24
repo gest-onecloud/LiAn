@@ -15,7 +15,7 @@ except:
     HAS_YAML = False
 
 class Model:
-    VERSION = "V64.6.0 REAL - Paso 3 FINAL Transparencia"
+    VERSION = "V64.6.0 REAL - Paso 4 Persistente"
 
     def __init__(self):
         # Cargar pesos

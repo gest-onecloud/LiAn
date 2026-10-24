@@ -7,8 +7,17 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime
 
-ROOT = Path(__file__).resolve().parent.parent
-REPO_PATH = ROOT / 'backend' / 'data' / 'lian.db'
+# PASO 4: Soporte para Disco Persistente en Render
+# Si existe env var LIAN_DB_PATH=/var/data/lian.db (Render Disk), usa ese
+# Si no, usa backend/data/lian.db local
+DB_PATH_ENV = os.environ.get("LIAN_DB_PATH", "")
+if DB_PATH_ENV:
+    REPO_PATH = Path(DB_PATH_ENV)
+    REPO_PATH.parent.mkdir(parents=True, exist_ok=True)
+else:
+    ROOT = Path(__file__).resolve().parent.parent
+    REPO_PATH = ROOT / 'backend' / 'data' / 'lian.db'
+    REPO_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 from backend.data.repo import Repo
 from backend.services import fixture_sync, calendar as cal_service
@@ -36,7 +45,14 @@ class Handler(BaseHTTPRequestHandler):
             _cors(self)
             self.end_headers()
             records = repo.count_all()
-            self.wfile.write(json.dumps({"ok":True,"records":records,"version":Model.VERSION,"mode":"REAL Poisson"}).encode())
+            self.wfile.write(json.dumps({
+                "ok":True,
+                "records":records,
+                "version":Model.VERSION,
+                "mode":"REAL Poisson Paso4 Persistente",
+                "db_path": str(REPO_PATH),
+                "disk_persistent": bool(DB_PATH_ENV)
+            }).encode())
             return
         if parsed.path == "/api/calendar/fast":
             date = qs.get('date',[datetime.now().strftime('%Y-%m-%d')])[0]
@@ -49,7 +65,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type","application/json")
             _cors(self)
             self.end_headers()
-            self.wfile.write(json.dumps({"date":date,"matches":payload,"count":len(payload),"source":"DB REAL + Poisson"}).encode())
+            self.wfile.write(json.dumps({"date":date,"matches":payload,"count":len(payload),"source":"DB REAL + Poisson Paso4","db_path":str(REPO_PATH)}).encode())
             return
         if parsed.path == "/api/calendar":
             date = qs.get('date',[datetime.now().strftime('%Y-%m-%d')])[0]
@@ -81,9 +97,25 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b'{"error":"not found"}')
 
+def auto_warmup():
+    """Paso 4: Si BD vacia, sincroniza automaticamente hoy"""
+    try:
+        c = repo.count_all()
+        if c == 0:
+            today = datetime.now().strftime('%Y-%m-%d')
+            print(f"[Paso4 Auto-Warmup] BD vacia ({REPO_PATH}), sincronizando {today} automaticamente...")
+            fixture_sync.sync_for_date(repo, today)
+            print(f"[Paso4 Auto-Warmup] Listo, ahora records={repo.count_all()}")
+        else:
+            print(f"[Paso4] BD OK con {c} partidos en {REPO_PATH}")
+    except Exception as e:
+        print(f"[Paso4 Warmup error] {e}")
+
 def main():
     port = int(os.environ.get("LIAN_PORT", os.environ.get("PORT", "8000")))
-    print(f"[server] REAL MODE Paso2 Poisson puerto {port} DB {REPO_PATH} {Model.VERSION}")
+    print(f"[server] REAL MODE Paso4 Persistente puerto {port} DB {REPO_PATH} {Model.VERSION} Disk={bool(DB_PATH_ENV)}")
+    # Auto-warmup en background para no bloquear inicio
+    threading.Thread(target=auto_warmup, daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     server.serve_forever()
 
