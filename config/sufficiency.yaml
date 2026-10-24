@@ -1,0 +1,29 @@
+
+# LiAn V64.6.0 - Suficiencia de datos
+# Reglas de transparencia segun Guia_explicativa
+
+reglas:
+  adecuada:
+    min_evidencia: 10
+    descripcion: ">=10 datos suficientes - Alta confiabilidad"
+    color: "#1ee07a"
+  parcial:
+    min_evidencia: 5
+    max_evidencia: 9
+    descripcion: "5-9 datos parciales - Confiabilidad media"
+    color: "#ffcc00"
+  limitada:
+    min_evidencia: 1
+    max_evidencia: 4
+    descripcion: "1-4 datos limitados - Baja confiabilidad"
+    color: "#ff8a5c"
+  pass:
+    min_evidencia: 0
+    max_evidencia: 0
+    descripcion: "0 datos - No se puede predecir, PASS"
+    color: "#ff4444"
+
+# Mensaje obligatorio de transparencia
+transparencia:
+  mensaje: "Probabilidad != recomendacion segura. Suma 1X2 ~100%. Revisar datos faltantes."
+  mostrar_siempre: true

@@ -1,0 +1,20 @@
+
+# LiAn V64.6.0 - Pesos del Ensemble
+# Probabilidad != recomendacion segura
+poisson: 0.58
+elo_fuerza: 0.16
+forma: 0.10
+montecarlo: 0.16
+
+# Validacion: suma debe ser 1.0
+# 0.58 + 0.16 + 0.10 + 0.16 = 1.0
+
+# Notas de transparencia
+descripcion:
+  poisson: "Modelo Dixon-Coles Poisson con xG"
+  elo_fuerza: "ELO rating con hash deterministico"
+  forma: "Forma reciente (5 ultimos partidos)"
+  montecarlo: "6000 simulaciones MonteCarlo"
+
+actualizacion: "2026-10-24"
+version: "V64.6.0"
