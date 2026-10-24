@@ -1,5 +1,5 @@
 
-const BACKEND = "https://lian-backend.onrender.com";
+const BACKEND = "https://lian-zfg8.onrender.com";
 const $status = document.getElementById('status');
 const $grid = document.getElementById('grid');
 const $log = document.getElementById('log');
