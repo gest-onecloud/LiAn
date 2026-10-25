@@ -38,15 +38,51 @@ async function api(path){
     throw e;
   }
 }
+function setSearch(term){
+  $searchInput.value = term;
+  const mainSearch = document.getElementById('mainSearchInput');
+  if(mainSearch) mainSearch.value = term;
+  renderAll();
+}
+
+function getEstadoIcon(estado){
+  if(estado==='FINALIZADO') return '✅';
+  if(estado==='EN_JUEGO') return '🔴';
+  return '⏰';
+}
+function getEstadoLabel(estado){
+  if(estado==='FINALIZADO') return 'Finalizado';
+  if(estado==='EN_JUEGO') return 'En Juego';
+  return 'Programado';
+}
+
 function cardA(m){
   const p = m.probabilities || {"1":0,"X":0,"2":0};
   const total = (p['1']+p['X']+p['2']).toFixed(1);
   const confColor = m.confidence==='Alta'?'#1ee07a':m.confidence==='Media'?'#ffcc00':'#ff8a8a';
   const ligaEmoji = m.league_code==='mex.1'?'🇲🇽':m.league_code==='usa.1'?'🇺🇸':m.league_code==='eng.1'?'🏴󠁧󠁢󠁥󠁮󠁧󠁿':m.league_code?.includes('champions')?'🏆':'⚽';
+  const estadoIcon = getEstadoIcon(m.estado||'PROGRAMADO');
+  const estadoLabel = getEstadoLabel(m.estado||'PROGRAMADO');
+  
+  // Marcador y acierto
+  let scoreHtml = '';
+  if(m.home_score!==null && m.home_score!==undefined && m.away_score!==null && m.away_score!==undefined){
+    const resultadoReal = m.resultado_real || '?';
+    let aciertoHtml = '';
+    if(m.estado==='FINALIZADO' && m.acierto!==null){
+      aciertoHtml = m.acierto ? '<span class="acierto ok">✅ Acertó</span>' : '<span class="acierto err">❌ Falló</span>';
+    } else if(m.estado==='EN_JUEGO'){
+      aciertoHtml = '<span class="acierto live">🔴 En vivo</span>';
+    }
+    scoreHtml = `<div class="score-row"><span class="score">${m.home_score} - ${m.away_score}</span><span class="score-detail">Real: ${resultadoReal} ${aciertoHtml}</span></div>`;
+  }
+  
   return `
-  <div class="card" data-league="${esc(m.league||'')}" data-home="${esc(m.home||'')}" data-away="${esc(m.away||'')}">
-    <div class="badge-row"><span class="tag">${ligaEmoji} ${esc(m.league_code||'')}</span><span class="league">${esc(m.league||'Futbol')} • ${esc(m.time||'')} • ${esc(m.date||'')}</span></div>
+  <div class="card" data-league="${esc(m.league||'')}" data-home="${esc(m.home||'')}" data-away="${esc(m.away||'')}" data-estado="${esc(m.estado||'PROGRAMADO')}">
+    <div class="badge-row"><span class="tag">${ligaEmoji} ${esc(m.league_code||'')}</span><span class="estado-tag estado-${(m.estado||'PROGRAMADO').toLowerCase()}">${estadoIcon} ${estadoLabel}</span></div>
+    <div class="league">${esc(m.league||'Futbol')} • ${esc(m.time||'')} • ${esc(m.date||'')} • ${esc(m.status_detail||m.status||'')}</div>
     <div class="teams">${esc(m.home)} <span style="color:#8aa0c8">vs</span> ${esc(m.away)}</div>
+    ${scoreHtml}
     <div class="prob-row">
       <span class="prob">1: ${p['1']}%</span>
       <span class="prob">X: ${p['X']}%</span>
@@ -75,35 +111,146 @@ function getFiltered(){
   }else if(currentFilter==='search'){
     const q = ($searchInput.value||'').toLowerCase();
     const liga = $leagueSelect.value;
-    filtered = allMatches.filter(m=>{
-      const matchQ = !q || m.home.toLowerCase().includes(q) || m.away.toLowerCase().includes(q);
-      const matchLiga = liga==='all' || (m.league||'').includes(liga);
-      return matchQ && matchLiga;
-    });
+    if(!q && liga==='all'){
+      filtered = [];
+    } else {
+      filtered = allMatches.filter(m=>{
+        const matchQ = !q || m.home.toLowerCase().includes(q) || m.away.toLowerCase().includes(q) || (m.league||'').toLowerCase().includes(q);
+        const matchLiga = liga==='all' || (m.league||'').includes(liga);
+        return matchQ && matchLiga;
+      });
+    }
   }else if(currentFilter==='combinada'){
     filtered = allMatches.filter(m=>m.confidence==='Alta' || m.confidence==='Media').slice(0,6);
   }else if(currentFilter==='progol'){
-    filtered = allMatches.slice(0,14); // 14 partidos para progol
+    filtered = allMatches.slice(0,14);
   }
   return filtered;
+}
+
+function groupByEstado(matches){
+  const enJuego = matches.filter(m=>m.estado==='EN_JUEGO');
+  const programados = matches.filter(m=>m.estado==='PROGRAMADO' || !m.estado);
+  const finalizados = matches.filter(m=>m.estado==='FINALIZADO');
+  return {enJuego, programados, finalizados};
 }
 
 function renderAll(){
   const filtered = getFiltered();
   $countBadge.textContent = `${filtered.length} partidos / ${allMatches.length} total`;
-
-  if(filtered.length===0){
-    $grid.innerHTML=`<div class="card">No hay partidos para este filtro. Prueba otro filtro o sincroniza.</div>`;
-    return;
+  
+  // BUSCADOR TIPO GOOGLE FIJO ARRIBA
+  if(currentFilter==='search'){
+    const q = ($searchInput.value||'').trim();
+    const liga = $leagueSelect.value;
+    const hasQuery = q || liga!=='all';
+    
+    let searchHeader = `
+      <div class="search-google-header">
+        <div class="search-google-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="mainSearchInput" placeholder="Ej: Pumas, America, Real Madrid, Monterrey..." value="${esc($searchInput.value)}">
+          ${q ? `<button class="clear-btn" onclick="setSearch('')">✕</button>` : ''}
+        </div>
+        <div class="search-google-hints">
+          <span onclick="setSearch('Pumas')">Pumas</span>
+          <span onclick="setSearch('America')">America</span>
+          <span onclick="setSearch('Monterrey')">Monterrey</span>
+          <span onclick="setSearch('Real Madrid')">Real Madrid</span>
+          <span onclick="setSearch('Inter Miami')">Inter Miami</span>
+          <span onclick="setSearch('Chivas')">Chivas</span>
+        </div>
+      </div>`;
+    
+    if(!hasQuery){
+      let html = searchHeader;
+      html += `
+        <div class="search-google-empty">
+          <div class="search-google-icon">🔍</div>
+          <h2>Buscar equipo</h2>
+          <p>Escribe el nombre de un equipo para buscar entre ${allMatches.length} partidos reales</p>
+          <small>Prueba: Liga MX, MLS, Champions, Premier, La Liga...</small>
+        </div>`;
+      $grid.innerHTML = html;
+      const mainInput = document.getElementById('mainSearchInput');
+      if(mainInput){
+        mainInput.focus();
+        mainInput.addEventListener('input', (e)=>{
+          $searchInput.value = e.target.value;
+          renderAll();
+        });
+        // Poner cursor al final
+        const len = mainInput.value.length;
+        mainInput.setSelectionRange(len, len);
+      }
+      return;
+    } else {
+      // Hay búsqueda, mostrar header + resultados
+      let html = searchHeader;
+      if(filtered.length===0){
+        html += `<div class="card">No hay resultados para "${esc($searchInput.value)}" en ${esc($leagueSelect.value)}</div>`;
+      } else {
+        html += `<div class="section-title">🔍 Resultados para "${esc($searchInput.value)}" - ${filtered.length} partidos encontrados</div>`;
+        // Agrupar por estado también en búsqueda
+        const {enJuego, programados, finalizados} = groupByEstado(filtered);
+        if(enJuego.length>0){
+          html += `<div class="section-title">🔴 En Juego (${enJuego.length})</div>`;
+          html += enJuego.map(cardA).join('');
+        }
+        if(programados.length>0){
+          html += `<div class="section-title">⏰ Programados (${programados.length})</div>`;
+          html += programados.map(cardA).join('');
+        }
+        if(finalizados.length>0){
+          html += `<div class="section-title">✅ Finalizados (${finalizados.length}) - Con acierto</div>`;
+          html += finalizados.map(cardA).join('');
+        }
+        if(enJuego.length===0 && programados.length===0 && finalizados.length===0){
+          html += filtered.map(cardA).join('');
+        }
+      }
+      $grid.innerHTML = html;
+      const mainInput = document.getElementById('mainSearchInput');
+      if(mainInput){
+        mainInput.focus();
+        const len = mainInput.value.length;
+        mainInput.setSelectionRange(len, len);
+        mainInput.addEventListener('input', (e)=>{
+          $searchInput.value = e.target.value;
+          renderAll();
+        });
+      }
+      return;
+    }
   }
-
+  
+  // Para filtros normales, agrupar por estado
+  const {enJuego, programados, finalizados} = groupByEstado(filtered);
+  
   let html = '';
   if(currentFilter==='all'){
     html += `<div class="section-title">⊙ Partidos del día (${filtered.length} partidos - 15 ligas mundiales)</div>`;
-    html += filtered.map(cardA).join('');
+    if(enJuego.length>0){
+      html += `<div class="section-title">🔴 En Juego (${enJuego.length})</div>`;
+      html += enJuego.map(cardA).join('');
+    }
+    if(programados.length>0){
+      html += `<div class="section-title">⏰ Programados (${programados.length})</div>`;
+      html += programados.map(cardA).join('');
+    }
+    if(finalizados.length>0){
+      html += `<div class="section-title">✅ Finalizados (${finalizados.length}) - Con marcador y acierto</div>`;
+      html += finalizados.map(cardA).join('');
+    }
+    if(enJuego.length===0 && programados.length===0 && finalizados.length===0){
+      html += filtered.map(cardA).join('');
+    }
   }else if(currentFilter==='top'){
     html += `<div class="section-title">★ Top Picks - Alta/Media confianza (${filtered.length})</div>`;
-    html += filtered.map(cardA).join('');
+    const groups = groupByEstado(filtered);
+    if(groups.enJuego.length>0){ html += `<div class="section-title">🔴 En Juego (${groups.enJuego.length})</div>`+groups.enJuego.map(cardA).join(''); }
+    if(groups.programados.length>0){ html += `<div class="section-title">⏰ Programados (${groups.programados.length})</div>`+groups.programados.map(cardA).join(''); }
+    if(groups.finalizados.length>0){ html += `<div class="section-title">✅ Finalizados (${groups.finalizados.length})</div>`+groups.finalizados.map(cardA).join(''); }
   }else if(currentFilter==='combinada'){
     html += `<div class="section-title">∽ Combinadas (${filtered.length} selecciones)</div>`;
     html += filtered.map(cardA).join('');
@@ -120,25 +267,26 @@ function renderAll(){
   }else if(currentFilter==='progol'){
     html += `<div class="section-title">▤ Progol - 14 partidos (quiniela mexicana)</div>`;
     html += filtered.map((m,i)=>`<div class="card progol"><div class="progol-num">${i+1}</div>`+cardA(m)+`</div>`).join('');
-  }else if(currentFilter==='liga-mx'){
-    html += `<div class="section-title">🇲🇽 Liga MX (${filtered.length} partidos)</div>`;
-    html += filtered.map(cardA).join('');
-  }else if(currentFilter==='mls'){
-    html += `<div class="section-title">🇺🇸 MLS (${filtered.length} partidos)</div>`;
-    html += filtered.map(cardA).join('');
-  }else if(currentFilter==='champions'){
-    html += `<div class="section-title">🏆 Champions League (${filtered.length} partidos)</div>`;
-    html += filtered.map(cardA).join('');
-  }else if(currentFilter==='europa'){
-    html += `<div class="section-title">🏅 Top 5 Europa (Premier, LaLiga, Serie A, Bundesliga, Ligue 1) - ${filtered.length}</div>`;
-    html += filtered.map(cardA).join('');
-  }else if(currentFilter==='search'){
-    html += `<div class="section-title">🔍 Búsqueda: "${esc($searchInput.value||'')}" en ${esc($leagueSelect.value)} - ${filtered.length} resultados</div>`;
-    html += filtered.map(cardA).join('');
+  }else{
+    // Liga MX, MLS, Champions, etc - también agrupar por estado
+    const titleMap = {
+      'liga-mx': '🇲🇽 Liga MX',
+      'mls': '🇺🇸 MLS',
+      'champions': '🏆 Champions League',
+      'europa': '🏅 Top 5 Europa'
+    };
+    html += `<div class="section-title">${titleMap[currentFilter]||currentFilter} (${filtered.length} partidos)</div>`;
+    const groups = groupByEstado(filtered);
+    if(groups.enJuego.length>0){ html += `<div class="section-title">🔴 En Juego (${groups.enJuego.length})</div>`+groups.enJuego.map(cardA).join(''); }
+    if(groups.programados.length>0){ html += `<div class="section-title">⏰ Programados (${groups.programados.length})</div>`+groups.programados.map(cardA).join(''); }
+    if(groups.finalizados.length>0){ html += `<div class="section-title">✅ Finalizados (${groups.finalizados.length})</div>`+groups.finalizados.map(cardA).join(''); }
+    if(groups.enJuego.length===0 && groups.programados.length===0 && groups.finalizados.length===0){
+      html += filtered.map(cardA).join('');
+    }
   }
 
   html += `<div class="section-title">📊 Transparencia</div>`;
-  html += `<div class="card"><div class="meta">Probabilidad != recomendación segura. Suma 1X2 ~100% validado.</div><div class="meta">Fuente: ESPN_MULTI_15LIGAS + Ensemble 58%/16%/10%/16% 6000 sims</div><div class="meta">Ligas: Premier, LaLiga, Serie A, Bundesliga, Ligue1, Liga MX, MLS, Brasileirao, Argentina, Champions, Europa, Conference, Concachampions</div><div class="meta">Versión: V64.6.0 Paso5 Multi-Liga Mundial</div></div>`;
+  html += `<div class="card"><div class="meta">Probabilidad != recomendación segura. Suma 1X2 ~100% validado.</div><div class="meta">Fuente: ESPN_MULTI_15LIGAS + Ensemble 58%/16%/10%/16% 6000 sims - Con marcador y acierto</div><div class="meta">Estados: ⏰ Programado • 🔴 En Juego • ✅ Finalizado con marcador</div><div class="meta">Versión: V64.6.0 Paso5.2 Buscador + Marcador + Estados</div></div>`;
 
   $grid.innerHTML = html;
 }

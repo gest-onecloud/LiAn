@@ -186,6 +186,26 @@ class Model:
         else:
             suf = "PASS"
 
+        # Evaluar acierto si hay marcador final
+        home_score = match.get('home_score')
+        away_score = match.get('away_score')
+        estado = match.get('estado','PROGRAMADO')
+        resultado_real = None
+        acierto = None
+        if home_score is not None and away_score is not None:
+            if home_score > away_score:
+                resultado_real = "1"
+            elif home_score == away_score:
+                resultado_real = "X"
+            else:
+                resultado_real = "2"
+            # ¿Acertó? Si el favorito o la mayor prob coincide con real
+            max_prob_key = max(probs, key=lambda k: probs[k])
+            if estado == 'FINALIZADO':
+                acierto = (max_prob_key == resultado_real)
+            else:
+                acierto = None
+
         return {
             "match_id": match.get('id'),
             "home": home,
@@ -215,6 +235,13 @@ class Model:
                 f"Fuerza {home}={str_home:.2f} vs {away}={str_away:.2f} diff={diff_strength:.2f}",
                 f"MonteCarlo 6000 sims: 1={prob_mc['1']}% X={prob_mc['X']}% 2={prob_mc['2']}%"
             ],
+            "home_score": match.get('home_score'),
+            "away_score": match.get('away_score'),
+            "score": match.get('score'),
+            "estado": match.get('estado','PROGRAMADO'),
+            "status_detail": match.get('status_detail',''),
+            "resultado_real": resultado_real,
+            "acierto": acierto,
             "transparencia": "Probabilidad != recomendacion segura. Suma 1X2 ~100%. Revisar datos faltantes.",
             "prediction_fast": fast
         }

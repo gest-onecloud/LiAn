@@ -49,6 +49,31 @@ def _parse_espn(date_str, raw, liga_code, liga_name):
             away = next((c for c in competitors if c.get('homeAway') == 'away'), competitors[1] if len(competitors)>1 else competitors[0])
             home_name = home.get('team', {}).get('displayName') or home.get('team',{}).get('shortDisplayName') or 'Local'
             away_name = away.get('team', {}).get('displayName') or away.get('team',{}).get('shortDisplayName') or 'Visita'
+            # SCORE REAL de ESPN
+            home_score = home.get('score')
+            away_score = away.get('score')
+            try:
+                hs = int(home_score) if home_score not in (None,'','None') else None
+            except:
+                hs = None
+            try:
+                as_ = int(away_score) if away_score not in (None,'','None') else None
+            except:
+                as_ = None
+            
+            # STATUS detallado
+            status_type = comp.get('status',{}).get('type',{})
+            status_name = status_type.get('name','NS')
+            status_detail = status_type.get('detail','')
+            status_state = status_type.get('state','pre')  # pre, in, post
+            # Normalizar estado
+            if status_state == 'post' or 'FINAL' in status_name or 'FINAL' in status_detail:
+                estado = 'FINALIZADO'
+            elif status_state == 'in' or 'IN_PROGRESS' in status_name or 'LIVE' in status_detail or '1H' in status_detail or '2H' in status_detail:
+                estado = 'EN_JUEGO'
+            else:
+                estado = 'PROGRAMADO'
+            
             league = liga_name
             dt_str = ev.get('date') or comp.get('date') or ''
             t = ''
@@ -66,9 +91,15 @@ def _parse_espn(date_str, raw, liga_code, liga_name):
                 "league": league,
                 "league_code": liga_code,
                 "competition": league,
-                "status": comp.get('status',{}).get('type',{}).get('name','NS')
+                "status": status_name,
+                "status_detail": status_detail,
+                "estado": estado,
+                "home_score": hs,
+                "away_score": as_,
+                "score": f"{hs}-{as_}" if hs is not None and as_ is not None else None
             })
         except Exception as e:
+            # print(f"[parse espn error] {e}")
             continue
     return matches
 
@@ -78,6 +109,20 @@ def _parse_thesportsdb(date_str, raw):
         return matches
     for ev in raw.get('events', []):
         try:
+            hs = None
+            as_ = None
+            try:
+                hs = int(ev.get('intHomeScore')) if ev.get('intHomeScore') else None
+                as_ = int(ev.get('intAwayScore')) if ev.get('intAwayScore') else None
+            except:
+                pass
+            estado = 'PROGRAMADO'
+            st = (ev.get('strStatus') or '').upper()
+            if 'FT' in st or 'FINAL' in st:
+                estado = 'FINALIZADO'
+            elif 'LIVE' in st or '1H' in st or '2H' in st:
+                estado = 'EN_JUEGO'
+            
             matches.append({
                 "date": date_str,
                 "time": (ev.get('strTime') or '')[:5],
@@ -86,7 +131,12 @@ def _parse_thesportsdb(date_str, raw):
                 "league": ev.get('strLeague') or 'Futbol',
                 "league_code": "others",
                 "competition": ev.get('strLeague') or 'Futbol',
-                "status": ev.get('strStatus') or 'NS'
+                "status": ev.get('strStatus') or 'NS',
+                "status_detail": ev.get('strStatus') or '',
+                "estado": estado,
+                "home_score": hs,
+                "away_score": as_,
+                "score": f"{hs}-{as_}" if hs is not None and as_ is not None else None
             })
         except:
             continue

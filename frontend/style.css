@@ -44,3 +44,116 @@ body{font-family:Inter,Arial,sans-serif;background:#0b1220;color:#e8eefc;margin:
 .ok{color:#1ee07a}
 .err{color:#ff6b6b}
 @media(max-width:800px){.layout{flex-direction:column}.sidebar{width:100%;height:auto;position:static}.main{padding:12px}}
+
+
+.search-google{
+  grid-column:1/-1;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  padding:80px 20px;
+  text-align:center;
+  background:#0e172d;
+  border:1px dashed #2a3a5a;
+  border-radius:16px;
+  min-height:400px;
+}
+.search-google-icon{font-size:48px;margin-bottom:16px}
+.search-google h2{font-size:28px;margin:0 0 8px 0;color:#fff}
+.search-google p{color:#8aa0c8;margin:0 0 24px 0;font-size:14px}
+.search-google-box{width:100%;max-width:500px;margin-bottom:20px}
+.search-google-box input{
+  width:100%;
+  padding:16px 20px;
+  border-radius:999px;
+  border:2px solid #2a4a7a;
+  background:#121d36;
+  color:#fff;
+  font-size:18px;
+  outline:none;
+  transition:all .2s;
+}
+.search-google-box input:focus{
+  border-color:#3a6ab5;
+  background:#162040;
+  box-shadow:0 0 0 4px rgba(58,106,181,0.2);
+}
+.search-google-hints{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:16px}
+.search-google-hints span{
+  background:#121d36;
+  border:1px solid #2a3a5a;
+  padding:6px 12px;
+  border-radius:999px;
+  font-size:12px;
+  cursor:pointer;
+  color:#8ab4ff;
+  transition:all .15s;
+}
+.search-google-hints span:hover{background:#1e3a5f;color:#fff;border-color:#3a6ab5}
+.search-google-ligas{color:#6a7a9a;font-size:11px}
+
+/* Buscador Google fijo arriba */
+.search-google-header{
+  grid-column:1/-1;
+  background:#0e172d;
+  border:1px solid #1e2f5a;
+  border-radius:12px;
+  padding:16px;
+  margin-bottom:12px;
+}
+.search-google-box{
+  position:relative;
+  width:100%;
+  max-width:600px;
+  margin:0 auto 12px auto;
+  display:flex;
+  align-items:center;
+}
+.search-google-box input{
+  width:100%;
+  padding:14px 44px 14px 44px;
+  border-radius:999px;
+  border:2px solid #2a4a7a;
+  background:#121d36;
+  color:#fff;
+  font-size:16px;
+  outline:none;
+}
+.search-google-box input:focus{border-color:#3a6ab5;box-shadow:0 0 0 4px rgba(58,106,181,0.2)}
+.search-icon{position:absolute;left:16px;font-size:18px;pointer-events:none}
+.clear-btn{position:absolute;right:8px;background:#1e2f5a;border:none;color:#8aa0c8;width:32px;height:32px;border-radius:50%;cursor:pointer}
+.clear-btn:hover{background:#2a3a5a;color:#fff}
+.search-google-empty{
+  grid-column:1/-1;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  padding:60px 20px;
+  text-align:center;
+  background:#0e172d;
+  border:1px dashed #2a3a5a;
+  border-radius:16px;
+  min-height:350px;
+}
+.search-google-icon{font-size:48px;margin-bottom:12px}
+.search-google-hints{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:12px}
+.search-google-hints span{background:#121d36;border:1px solid #2a3a5a;padding:6px 12px;border-radius:999px;font-size:12px;cursor:pointer;color:#8ab4ff}
+.search-google-hints span:hover{background:#1e3a5f;color:#fff}
+
+/* Estados */
+.estado-tag{font-size:10px;padding:2px 8px;border-radius:999px;font-weight:700}
+.estado-programado{background:#1e2f5a;color:#8ab4ff}
+.estado-en_juego{background:#5a1e1e;color:#ff8a8a;animation:pulse 1.5s infinite}
+.estado-finalizado{background:#1e3a1e;color:#1ee07a}
+@keyframes pulse{0%{opacity:1}50%{opacity:0.6}100%{opacity:1}}
+
+/* Score y acierto */
+.score-row{display:flex;align-items:center;gap:10px;margin:8px 0;background:#0e172d;padding:6px 10px;border-radius:8px;border:1px solid #1e2f5a}
+.score{font-size:18px;font-weight:800;color:#fff;background:#1a2747;padding:2px 10px;border-radius:6px}
+.score-detail{font-size:12px;color:#9fb2d6;display:flex;align-items:center;gap:6px}
+.acierto{padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700}
+.acierto.ok{background:#1e3a1e;color:#1ee07a}
+.acierto.err{background:#3a1e1e;color:#ff8a8a}
+.acierto.live{background:#3a1e1e;color:#ff6b6b;animation:pulse 1s infinite}
