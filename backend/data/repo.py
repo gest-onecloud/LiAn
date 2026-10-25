@@ -92,6 +92,16 @@ class Repo:
         cur.execute("SELECT COUNT(*) as c FROM matches")
         return cur.fetchone()['c']
 
+    def delete_by_date(self, date_str):
+        try:
+            with self._conn() as c:
+                cur = c.cursor()
+                cur.execute("DELETE FROM matches WHERE date=?", (date_str,))
+                return cur.rowcount
+        except Exception as e:
+            print(f"[repo] delete_by_date error: {e}")
+            return 0
+
     def log_sync(self, source, date, count, duration_ms, status):
         cur = self.conn.cursor()
         cur.execute("INSERT INTO sync_log (source, date, count, duration_ms, status) VALUES (?,?,?,?,?)",
