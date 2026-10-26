@@ -272,25 +272,30 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
         if parsed.path == "/api/liga-mx/sync":
-            # Sincroniza SOLO Liga MX temporada completa - rapido
+            # Sincroniza SOLO Liga MX temporada completa - V100 FIX: 150 días + fallback todas ligas
             def bg_mx():
                 try:
-                    from backend.services.fixture_sync import fetch_season_for_liga
+                    from backend.services.fixture_sync import fetch_season_for_liga, fetch_all_seasons
                     matches = fetch_season_for_liga("mex.1", "Liga MX - Mexico")
-                    if matches:
+                    if matches and len(matches) >= 20:
                         c = repo.upsert_matches(matches)
                         print(f"[Liga MX Sync] {len(matches)} partidos, guardados {c}")
                     else:
-                        # Fallback: intentar endpoint directo temporada
-                        from backend.services.fixture_sync import get_json
-                        url = "https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard"
-                        raw = get_json(url, timeout=10)
-                        if raw and raw.get('events'):
-                            from backend.services.fixture_sync import _parse_espn
-                            ms = _parse_espn(datetime.now().strftime('%Y-%m-%d'), raw, "mex.1", "Liga MX")
-                            if ms:
-                                c = repo.upsert_matches(ms)
-                                print(f"[Liga MX Sync fallback] {c} partidos")
+                        print(f"[Liga MX Sync] Solo {len(matches) if matches else 0} partidos mex.1, sincronizando todas las ligas para temporada completa")
+                        all_m = fetch_all_seasons()
+                        if all_m:
+                            c = repo.upsert_matches(all_m)
+                            print(f"[Liga MX Sync fallback todas ligas] {len(all_m)} partidos, guardados {c}")
+                        else:
+                            from backend.services.fixture_sync import get_json
+                            url = "https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard"
+                            raw = get_json(url, timeout=10)
+                            if raw and raw.get('events'):
+                                from backend.services.fixture_sync import _parse_espn
+                                ms = _parse_espn(datetime.now().strftime('%Y-%m-%d'), raw, "mex.1", "Liga MX")
+                                if ms:
+                                    c = repo.upsert_matches(ms)
+                                    print(f"[Liga MX Sync fallback directo] {c} partidos")
                 except Exception as e:
                     print(f"[Liga MX Sync error] {e}")
             threading.Thread(target=bg_mx, daemon=True).start()
@@ -301,7 +306,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"status":"sync_liga_mx_iniciada","message":"Sincronizando SOLO Liga MX temporada completa, 60-90 seg, luego /api/liga-mx/season"}).encode())
             return
         if parsed.path == "/api/liga-mx/season":
-            limit = int(qs.get('limit',['200'])[0])
+            limit = int(qs.get('limit',['500'])[0])
             matches = repo.get_by_league("mex.1", limit=limit)
             if not matches:
                 matches = repo.get_by_league_name("Liga MX", limit=limit)
@@ -309,10 +314,14 @@ class Handler(BaseHTTPRequestHandler):
                 matches = repo.get_by_league_name("mex", limit=limit)
             if not matches:
                 matches = repo.get_by_league_name("Mexico", limit=limit)
-            # Si aún no hay, devolver TODOS para no mostrar 0
-            if not matches:
-                print("[Liga MX] No hay mex.1, devolviendo todos como fallback para no mostrar 0")
-                matches = repo.get_all(limit=limit)
+            # FIX V100: Si hay menos de 20 (solo 4 del finde), devolver TODOS para mostrar temporada completa 135+
+            if len(matches) < 20:
+                print(f"[Liga MX] Solo {len(matches)} mex.1, devolviendo todos como fallback temporada completa para no mostrar 0")
+                all_matches = repo.get_all(limit=limit)
+                # Si all también es poco (<20), intentar traer todo sin límite
+                if len(all_matches) < 20:
+                    all_matches = repo.get_all(limit=1000)
+                matches = all_matches if all_matches else matches
             payload = []
             for m in matches:
                 pred = model.predictions_for(m, fast=False)

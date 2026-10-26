@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LiAn V64.6.0 - Multi-Liga Mundial</title>
-<link rel="stylesheet" href="style.css?v=97">
+<link rel="stylesheet" href="style.css?v=100">
 </head>
 <body>
 <div class="layout">
@@ -143,7 +143,8 @@
     <div class="sidebar-footer">
       <div class="search-box" id="searchBox" style="display:none">
         <input type="text" id="searchInput" placeholder="Buscar equipo...">
-        <select id="leagueSelect">
+        <input type="date" id="dateInput" style="margin-top:6px;width:100%;background:#0f1a33;border:1px solid #2a3a5a;color:#fff;padding:6px;border-radius:6px">
+        <select id="leagueSelect" style="margin-top:6px">
           <option value="all">Todas las ligas</option>
           <option value="Premier League">Premier League</option>
           <option value="La Liga">La Liga</option>
@@ -153,6 +154,7 @@
           <option value="Bundesliga">Bundesliga</option>
           <option value="Champions League">Champions</option>
         </select>
+        <div style="font-size:10px;color:#8aa0c8;margin-top:4px">Calendario solo para búsqueda por fecha</div>
       </div>
       <div class="status" id="status">Cargando...</div>
       <div class="version">V71 SOLO Analytics - sin tarjetas<br>FIX Europa y FA Cup exacto<br>Estadísticas antemenúltimo</div>
@@ -160,9 +162,9 @@
   </aside>
   <main class="main">
     <div class="top-bar">
-      <input type="date" id="dateInput">
-      <button id="loadBtn">Cargar temporada completa</button>
-      <button id="refreshBtn" class="primary">Sincronizar Liga MX (solo México)</button>
+      <span style="color:#1ee07a;font-weight:900;font-size:14px">🇲🇽 LIGA MX - Temporada Completa México</span>
+      <button id="loadBtn">🔄 Cargar Liga MX</button>
+      <button id="refreshBtn" class="primary">⚡ Sincronizar Liga MX</button>
       <span class="badge" id="countBadge">0 partidos</span>
     </div>
     <div class="grid" id="grid"></div>
@@ -193,6 +195,6 @@ function toggleCountry(id){
   }
 }
 </script>
-<script src="app.js?v=97"></script>
+<script src="app.js?v=100"></script>
 </body>
 </html>
