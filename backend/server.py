@@ -51,6 +51,49 @@ class Handler(BaseHTTPRequestHandler):
                 "disk_persistent": bool(DB_PATH_ENV)
             }).encode())
             return
+        # PASO 8: Temporada completa por liga
+        if parsed.path == "/api/calendar/season/league":
+            league_code = qs.get('league',[''])[0] or qs.get('league_code',[''])[0]
+            limit = int(qs.get('limit',['500'])[0])
+            if league_code:
+                matches = repo.get_by_league(league_code, limit=limit)
+                if not matches:
+                    # fallback por nombre
+                    matches = repo.get_by_league_name(league_code, limit=limit)
+            else:
+                matches = repo.get_all(limit=limit)
+            payload = []
+            for m in matches:
+                pred = model.predictions_for(m, fast=False)
+                payload.append(pred)
+            self.send_response(200)
+            self.send_header("Content-Type","application/json")
+            _cors(self)
+            self.end_headers()
+            self.wfile.write(json.dumps({"league":league_code,"matches":payload,"count":len(payload),"source":f"Temporada {league_code or 'todas'}"}).encode())
+            return
+        if parsed.path == "/api/calendar/count_by_league":
+            stats = repo.count_by_league()
+            self.send_response(200)
+            self.send_header("Content-Type","application/json")
+            _cors(self)
+            self.end_headers()
+            self.wfile.write(json.dumps({"leagues":stats,"count":len(stats)}).encode())
+            return
+        if parsed.path == "/api/calendar/sync_season":
+            # Trigger background sync de temporada completa
+            def bg():
+                try:
+                    fixture_sync.sync_all_seasons(repo)
+                except Exception as e:
+                    print(f"[bg_season error] {e}")
+            threading.Thread(target=bg,daemon=True).start()
+            self.send_response(200)
+            self.send_header("Content-Type","application/json")
+            _cors(self)
+            self.end_headers()
+            self.wfile.write(json.dumps({"status":"sync_temporada_iniciada","message":"Sincronizando 15 ligas temporada completa, tarda 2-3 min, luego /api/calendar/season"}).encode())
+            return
         # PASO 7: Temporada completa - todos los partidos ordenados recientes primero
         if parsed.path == "/api/calendar/season":
             limit = int(qs.get('limit',['500'])[0])

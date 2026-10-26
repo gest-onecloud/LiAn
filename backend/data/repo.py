@@ -179,6 +179,22 @@ class Repo:
         cur.execute("SELECT league_code, league, COUNT(*) as c FROM matches GROUP BY league_code, league ORDER BY c DESC")
         return [dict(r) for r in cur.fetchall()]
 
+
+    def get_by_league(self, league_code, limit=500):
+        cur = self.conn.cursor()
+        cur.execute("SELECT * FROM matches WHERE league_code=? ORDER BY date DESC, time DESC LIMIT ?", (league_code, limit))
+        return [dict(r) for r in cur.fetchall()]
+
+    def get_by_league_name(self, league_name_part, limit=500):
+        cur = self.conn.cursor()
+        cur.execute("SELECT * FROM matches WHERE league LIKE ? OR league_code LIKE ? ORDER BY date DESC, time DESC LIMIT ?", (f"%{league_name_part}%", f"%{league_name_part}%", limit))
+        return [dict(r) for r in cur.fetchall()]
+
+    def count_by_league(self):
+        cur = self.conn.cursor()
+        cur.execute("SELECT league_code, league, COUNT(*) as c, MIN(date) as desde, MAX(date) as hasta FROM matches GROUP BY league_code, league ORDER BY c DESC")
+        return [dict(r) for r in cur.fetchall()]
+
     def log_sync(self, source, date, count, duration_ms, status):
         try:
             cur = self.conn.cursor()

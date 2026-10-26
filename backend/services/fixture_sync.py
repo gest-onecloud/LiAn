@@ -29,6 +29,79 @@ _cache = {"date": None, "data": None, "ts": 0}
 CACHE_TTL = 180
 
 
+
+def fetch_season_for_liga(liga_code, liga_name):
+    """PASO 8: Trae toda la temporada de una liga usando rangos de fechas ESPN"""
+    from datetime import datetime
+    all_matches = []
+    # Intentar múltiples estrategias para traer temporada completa
+    season_urls = [
+        f"https://site.api.espn.com/apis/site/v2/sports/soccer/{liga_code}/scoreboard?dates=2025-2026",
+        f"https://site.api.espn.com/apis/site/v2/sports/soccer/{liga_code}/scoreboard?dates=2025",
+        f"https://site.api.espn.com/apis/site/v2/sports/soccer/{liga_code}/scoreboard?dates=20240801-20260731",
+        f"https://site.api.espn.com/apis/site/v2/sports/soccer/{liga_code}/scoreboard?dates=20240101-20261231",
+        f"https://site.api.espn.com/apis/site/v2/sports/soccer/{liga_code}/scoreboard",
+    ]
+    today = datetime.now().strftime('%Y-%m-%d')
+    for url in season_urls:
+        try:
+            raw = get_json(url, timeout=10)
+            if raw and raw.get('events'):
+                matches = _parse_espn(today, raw, liga_code, liga_name)
+                if matches:
+                    print(f"[season] {liga_code} URL {url[:80]} -> {len(matches)} partidos temporada")
+                    all_matches.extend(matches)
+                    # Si ya tenemos bastantes, no seguir probando más URLs para esta liga
+                    if len(all_matches) >= 50:
+                        break
+        except Exception as e:
+            print(f"[season] Error {liga_code} {url}: {e}")
+            continue
+    
+    # Deduplicar por fecha+equipos
+    seen=set()
+    unique=[]
+    for m in all_matches:
+        key=f"{m['date']}_{m['home']}_{m['away']}_{m['league_code']}"
+        if key not in seen:
+            seen.add(key)
+            unique.append(m)
+    print(f"[season] {liga_code} TOTAL temporada: {len(unique)} partidos únicos")
+    return unique
+
+def fetch_all_seasons():
+    """Trae temporada completa de las 15 ligas"""
+    all_matches=[]
+    for liga_code, liga_name in LIGAS_MUNDIALES:
+        try:
+            matches=fetch_season_for_liga(liga_code, liga_name)
+            all_matches.extend(matches)
+            print(f"[all_seasons] {liga_code}: {len(matches)}")
+        except Exception as e:
+            print(f"[all_seasons] Error {liga_code}: {e}")
+    # Deduplicar global
+    seen=set()
+    unique=[]
+    for m in all_matches:
+        key=f"{m['date']}_{m['home']}_{m['away']}_{m['league_code']}"
+        if key not in seen:
+            seen.add(key)
+            unique.append(m)
+    print(f"[all_seasons] TOTAL 15 ligas: {len(unique)} partidos temporada completa")
+    return unique
+
+def sync_all_seasons(repo):
+    """Sincroniza temporada completa de todas las ligas a la BD"""
+    print("[sync_all_seasons] Iniciando sincronización temporada completa 15 ligas...")
+    matches=fetch_all_seasons()
+    if matches:
+        count=repo.upsert_matches(matches)
+        print(f"[sync_all_seasons] Guardados {count} partidos temporada completa")
+        repo.log_sync('SEASON_15_LIGAS', '2025-2026', count, 0, 'OK')
+        return count
+    return 0
+
+
 def _parse_espn(requested_date, raw, liga_code, liga_name):
     matches = []
     if not raw:

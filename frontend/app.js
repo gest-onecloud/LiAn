@@ -1,3 +1,4 @@
+
 const BACKEND = "https://lian-zfg8.onrender.com";
 const $status = document.getElementById('status');
 const $grid = document.getElementById('grid');
@@ -59,187 +60,6 @@ async function api(path){
   }
 }
 
-function cardA(m){
-  const p = m.probabilities || {"1":0,"X":0,"2":0};
-  const total = (p['1']+p['X']+p['2']).toFixed(1);
-  const iconPath = `icons/${m.league_code||'default'}.svg`;
-  const fallbackEmoji = m.league_code==='mex.1'?'🇲🇽':m.league_code==='usa.1'?'🇺🇸':m.league_code==='eng.1'?'🏴󠁧󠁢󠁥󠁮󠁧󠁿':m.league_code?.includes('champions')?'🏆':'⚽';
-  let badgeHtml='';
-  if(m.estado==='FINALIZADO'){
-    if(m.acierto===true) badgeHtml='<span class="estado-tag estado-acierto">✅ Acertó</span>';
-    else if(m.acierto===false) badgeHtml='<span class="estado-tag estado-fallo">❌ Falló</span>';
-    else badgeHtml='<span class="estado-tag estado-finalizado">✅ Finalizado</span>';
-  } else if(m.estado==='EN_JUEGO'){
-    badgeHtml='<span class="estado-tag estado-en_juego">🔴 En Juego</span>';
-  } else {
-    badgeHtml='<span class="estado-tag estado-programado">⏰ Programado</span>';
-  }
-  let scoreHtml='';
-  if(m.estado!=='PROGRAMADO' && m.home_score!=null && m.away_score!=null){
-    scoreHtml=`<div class="score-row"><span class="score">${m.home_score} - ${m.away_score}</span></div>`;
-  }
-  const confColor=m.confidence==='Alta'?'#1ee07a':m.confidence==='Media'?'#f5d547':'#ff6b6b';
-  const confIcon=m.confidence==='Alta'?'icons/conf-alta.svg':m.confidence==='Media'?'icons/conf-media.svg':'icons/conf-limitada.svg';
-  const confHtml=m.confidence?`<span class="conf-badge conf-${m.confidence.toLowerCase()}"><img src="${confIcon}" class="conf-icon" alt=""><span class="conf-dot" style="background:${confColor}"></span>Conf: ${esc(m.confidence)}</span>`:'';
-  return `<div class="card" data-league="${esc(m.league||'')}" data-home="${esc(m.home||'')}" data-away="${esc(m.away||'')}" data-estado="${esc(m.estado||'PROGRAMADO')}" data-acierto="${m.acierto===true?'acierto':m.acierto===false?'fallo':''}"><div class="badge-row"><span class="tag"><img src="${iconPath}" class="league-icon" onerror="this.style.display='none';this.nextElementSibling.style.display='inline'"><span style="display:none">${fallbackEmoji}</span> ${esc(m.league_code||'')}</span>${badgeHtml}</div><div class="league">${esc(m.league||'Futbol')} • ${esc(m.time||'')} • ${esc(m.date||'')}</div><div class="teams">${esc(m.home)} <span style="color:#8aa0c8">vs</span> ${esc(m.away)}</div>${scoreHtml}<div class="prob-row"><span class="prob">L: ${p['1']}%</span><span class="prob">E: ${p['X']}%</span><span class="prob">V: ${p['2']}%</span><span class="total">Σ ${total}%</span></div><div class="meta fav-conf-row"><span>⭐ Favorito: <b>${esc(m.favorite||'')}</b></span>${confHtml}</div></div>`;
-}
-
-function getFiltered(){
-  let filtered=allMatches;
-  const f = currentFilter;
-  const norm = (s)=> (s||'').toLowerCase().trim();
-  const lc = (m)=> norm(m.league_code);
-  // PASO 7: Filtro de calendario - si hay fecha seleccionada, filtra por esa fecha
-  const selectedDate = $dateInput.value;
-  const applyDateFilter = selectedDate && currentFilter !== 'analytics' && currentFilter !== 'search';
-  const ln = (m)=> norm(m.league);
-
-  if(f==='top'){
-    filtered=allMatches.filter(m=>m.confidence==='Alta'||m.confidence==='Media');
-  } else if(f==='liga-mx'){
-    filtered=allMatches.filter(m=>lc(m).includes('mex')||ln(m).includes('liga mx')||ln(m).includes('mexico'));
-  } else if(f==='mls'){
-    filtered=allMatches.filter(m=>lc(m).includes('usa')||ln(m).includes('mls'));
-  } else if(f==='champions'){
-    filtered=allMatches.filter(m=>lc(m).includes('champions')||ln(m).includes('champions'));
-  } else if(f==='europa'){
-    filtered=allMatches.filter(m=>['eng.1','esp.1','ita.1','ger.1','fra.1'].includes(lc(m)));
-  } else if(f.startsWith('league:')){
-    const code=f.split(':')[1];
-    const codeNorm=norm(code);
-    filtered=allMatches.filter(m=>{
-      const c=lc(m);
-      const n=ln(m);
-      // Filtro EXACTO por código - FA Cup no debe traer Premier
-      if(c===codeNorm) return true;
-      // Mapeos exactos por nombre para robustez
-      if(codeNorm==='eng.fa') return c==='eng.fa' || n.includes('fa cup');
-      if(codeNorm==='eng.1') return c==='eng.1' || (n.includes('premier league') && !n.includes('fa cup'));
-      if(codeNorm==='esp.1') return c==='esp.1' || n.includes('la liga') || (n.includes('liga') && n.includes('españa'));
-      if(codeNorm==='ita.1') return c==='ita.1' || n.includes('serie a');
-      if(codeNorm==='ger.1') return c==='ger.1' || n.includes('bundesliga');
-      if(codeNorm==='fra.1') return c==='fra.1' || n.includes('ligue 1');
-      if(codeNorm==='mex.1') return c==='mex.1' || n.includes('liga mx') || n.includes('mexico');
-      if(codeNorm==='usa.1') return c==='usa.1' || n.includes('mls');
-      if(codeNorm==='bra.1') return c==='bra.1' || n.includes('brasil') || n.includes('brasileirão');
-      if(codeNorm==='arg.1') return c==='arg.1' || n.includes('argentina');
-      if(codeNorm==='uefa.champions') return c==='uefa.champions' || n.includes('champions league');
-      if(codeNorm==='uefa.europa') return c==='uefa.europa' && !c.includes('conf') || n.includes('europa league');
-      if(codeNorm==='uefa.europa.conf') return c==='uefa.europa.conf' || n.includes('conference');
-      if(codeNorm==='concacaf.champions') return c.includes('concacaf') || n.includes('concachampions');
-      return false;
-    });
-  } else if(f.startsWith('continent:')){
-    const cont=f.split(':')[1];
-    if(cont==='america'){
-      filtered=allMatches.filter(m=>{
-        const c=lc(m); const n=ln(m);
-        return c.includes('mex')||c.includes('usa')||c.includes('bra')||c.includes('arg')||c.includes('concacaf')||n.includes('liga mx')||n.includes('mls')||n.includes('brasil')||n.includes('argentina')||n.includes('concachampions')||n.includes('mexico');
-      });
-    } else if(cont==='europa'){
-      filtered=allMatches.filter(m=>{
-        const c=lc(m); const n=ln(m);
-        return c.includes('eng')||c.includes('esp')||c.includes('ita')||c.includes('ger')||c.includes('fra')||c.includes('uefa')||n.includes('premier')||n.includes('la liga')||n.includes('serie a')||n.includes('bundesliga')||n.includes('ligue 1')||n.includes('champions')||n.includes('europa league')||n.includes('conference');
-      });
-    }
-  } else if(f.startsWith('country:')){
-    const ctry=f.split(':')[1];
-    if(ctry==='mx') filtered=allMatches.filter(m=>lc(m).includes('mex')||ln(m).includes('mexico')||ln(m).includes('liga mx'));
-    else if(ctry==='usa') filtered=allMatches.filter(m=>lc(m).includes('usa')||lc(m).includes('concacaf')||ln(m).includes('mls'));
-    else if(ctry==='eng') filtered=allMatches.filter(m=>lc(m).includes('eng')||ln(m).includes('premier')||ln(m).includes('fa cup'));
-    else if(ctry==='esp') filtered=allMatches.filter(m=>lc(m).includes('esp')||ln(m).includes('la liga'));
-    else if(ctry==='ita') filtered=allMatches.filter(m=>lc(m).includes('ita')||ln(m).includes('serie a'));
-    else if(ctry==='ger') filtered=allMatches.filter(m=>lc(m).includes('ger')||ln(m).includes('bundesliga'));
-    else if(ctry==='fra') filtered=allMatches.filter(m=>lc(m).includes('fra')||ln(m).includes('ligue'));
-    else if(ctry==='uefa') filtered=allMatches.filter(m=>lc(m).startsWith('uefa')||ln(m).includes('champions')||ln(m).includes('europa')||ln(m).includes('conference'));
-    else if(ctry==='br') filtered=allMatches.filter(m=>lc(m).includes('bra')||ln(m).includes('brasil'));
-    else if(ctry==='ar') filtered=allMatches.filter(m=>lc(m).includes('arg')||ln(m).includes('argentina'));
-  } else if(f==='search'){
-    const q=norm($searchInput.value);
-    const liga=$leagueSelect.value;
-    if(!q&&liga==='all'){ filtered=[]; }
-    else {
-      filtered=allMatches.filter(m=>{
-        const matchQ=!q||norm(m.home).includes(q)||norm(m.away).includes(q)||ln(m).includes(q);
-        const matchLiga=liga==='all'||(m.league||'').includes(liga);
-        return matchQ&&matchLiga;
-      });
-    }
-  } else if(f==='aciertos'){
-    filtered=allMatches.filter(m=>m.estado==='FINALIZADO'&&m.acierto===true);
-  } else if(f==='fallos'){
-    filtered=allMatches.filter(m=>m.estado==='FINALIZADO'&&m.acierto===false);
-  } else if(f==='combinada'){
-    filtered=allMatches.filter(m=>m.confidence==='Alta'||m.confidence==='Media').slice(0,6);
-  } else if(f==='progol'){
-    filtered=allMatches.slice(0,14);
-  } else if(f==='analytics'){
-    filtered=allMatches;
-  }
-  // PASO 7: Aplicar filtro de fecha del calendario + ordenar recientes primero
-  if(applyDateFilter && f !== 'analytics'){
-    filtered = filtered.filter(m=>m.date===selectedDate);
-  }
-  // Ordenar por fecha más reciente primero
-  filtered.sort((a,b)=>{
-    const da = (a.date||'') + ' ' + (a.time||'');
-    const db = (b.date||'') + ' ' + (b.time||'');
-    return db.localeCompare(da);
-  });
-  return filtered;
-}
-
-
-
-
-function renderAnalyticsExtended(matches){
-  const a = calcAnalytics(matches);
-  const finalizados = matches.filter(m=>m.estado==='FINALIZADO');
-  const enJuego = matches.filter(m=>m.estado==='EN_JUEGO');
-  const programados = matches.filter(m=>m.estado==='PROGRAMADO');
-  const aciertos = finalizados.filter(m=>m.acierto===true).length;
-  const fallos = finalizados.filter(m=>m.acierto===false).length;
-  const pct = finalizados.length>0?Math.round(aciertos/finalizados.length*100):0;
-  const cs = a.confStats;
-  const totalConf = cs.Alta.total+cs.Media.total+cs.Limitada.total;
-  return `
-  <div class="analytics-panel">
-    <div class="analytics-grid">
-      <div class="analytics-card">
-        <div class="analytics-title">⚽ Estado del día</div>
-        <div class="analytics-value">🔴 ${enJuego.length} En Juego | ⏰ ${programados.length} Programados | ✅ ${finalizados.length} Finalizados</div>
-        <div class="analytics-bar"><div class="bar-fill acierto" style="width:${matches.length>0?Math.round(finalizados.length/matches.length*100):0}%"></div></div>
-      </div>
-      <div class="analytics-card">
-        <div class="analytics-title">🎯 Acierto Global</div>
-        <div class="analytics-value" style="font-size:22px">${pct}% - ${aciertos}✅ / ${fallos}❌ de ${finalizados.length}</div>
-        <div class="analytics-bar"><div class="bar-fill acierto" style="width:${pct}%"></div></div>
-      </div>
-      <div class="analytics-card wide">
-        <div class="analytics-title">📊 Detalle por confianza - Cuántos atinó y falló</div>
-        <div class="conf-analytics" style="gap:10px">
-          <div class="conf-detail">
-            <div class="conf-row alta"><span class="conf-dot" style="background:#1ee07a"></span><b>Alta:</b> ${cs.Alta.total} partidos → ${cs.Alta.aciertos}✅ atinó / ${cs.Alta.fallos}❌ falló - ${cs.Alta.total>0?Math.round(cs.Alta.aciertos/cs.Alta.total*100):0}% acierto ${cs.Alta.total>0?`(${Math.round(cs.Alta.total/Math.max(1,totalConf)*100)}% del total)`:''}</div>
-            <div class="conf-bar"><div class="bar-fill acierto" style="width:${cs.Alta.total>0?Math.round(cs.Alta.aciertos/cs.Alta.total*100):0}%"></div></div>
-          </div>
-          <div class="conf-detail">
-            <div class="conf-row media"><span class="conf-dot" style="background:#f5d547"></span><b>Media:</b> ${cs.Media.total} partidos → ${cs.Media.aciertos}✅ atinó / ${cs.Media.fallos}❌ falló - ${cs.Media.total>0?Math.round(cs.Media.aciertos/cs.Media.total*100):0}% acierto ${cs.Media.total>0?`(${Math.round(cs.Media.total/Math.max(1,totalConf)*100)}% del total)`:''}</div>
-            <div class="conf-bar"><div class="bar-fill" style="width:${cs.Media.total>0?Math.round(cs.Media.aciertos/cs.Media.total*100):0}%; background:#f5d547"></div></div>
-          </div>
-          <div class="conf-detail">
-            <div class="conf-row limitada"><span class="conf-dot" style="background:#ff6b6b"></span><b>Limitada:</b> ${cs.Limitada.total} partidos → ${cs.Limitada.aciertos}✅ atinó / ${cs.Limitada.fallos}❌ falló - ${cs.Limitada.total>0?Math.round(cs.Limitada.aciertos/cs.Limitada.total*100):0}% acierto ${cs.Limitada.total>0?`(${Math.round(cs.Limitada.total/Math.max(1,totalConf)*100)}% del total)`:''}</div>
-            <div class="conf-bar"><div class="bar-fill fallo" style="width:${cs.Limitada.total>0?Math.round(cs.Limitada.aciertos/cs.Limitada.total*100):0}%"></div></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>`;
-}
-
-
-
-
-
 function calcAnalytics(matches){
   const finalizados = matches.filter(m=>m.estado==='FINALIZADO');
   const porLiga = {};
@@ -269,10 +89,9 @@ function calcAnalytics(matches){
 
 function renderAnalytics(matches){
   const a = calcAnalytics(matches);
-  if(a.totalFinalizados===0) return `<div class="analytics-panel"><div class="section-title">📊 Estadísticas</div><div class="analytics-card">Aún no hay partidos finalizados hoy para analizar. Finaliza al menos 1 partido.</div></div>`;
+  if(a.totalFinalizados===0) return `<div class="analytics-panel"><div class="section-title">📊 Estadísticas</div><div class="analytics-card">Aún no hay partidos finalizados hoy para analizar.</div></div>`;
   const mas = a.ligaMasAciertos;
   const menos = a.ligaMenosAciertos;
-  const cs = a.confStats;
   return `
   <div class="analytics-panel">
     <div class="section-title">📊 Analytics del día - ${matches.length} partidos totales</div>
@@ -342,6 +161,120 @@ function renderAnalyticsExtended(matches){
   </div>`;
 }
 
+function cardA(m){
+  const p = m.probabilities || {"1":0,"X":0,"2":0};
+  const total = (p['1']+p['X']+p['2']).toFixed(1);
+  const iconPath = `icons/${m.league_code||'default'}.svg`;
+  const fallbackEmoji = m.league_code==='mex.1'?'🇲🇽':m.league_code==='usa.1'?'🇺🇸':m.league_code==='eng.1'?'🏴󠁧󠁢󠁥󠁮󠁧󠁿':m.league_code?.includes('champions')?'🏆':'⚽';
+  let badgeHtml='';
+  if(m.estado==='FINALIZADO'){
+    if(m.acierto===true) badgeHtml='<span class="estado-tag estado-acierto">✅ Acertó</span>';
+    else if(m.acierto===false) badgeHtml='<span class="estado-tag estado-fallo">❌ Falló</span>';
+    else badgeHtml='<span class="estado-tag estado-finalizado">✅ Finalizado</span>';
+  } else if(m.estado==='EN_JUEGO'){
+    badgeHtml='<span class="estado-tag estado-en_juego">🔴 En Juego</span>';
+  } else {
+    badgeHtml='<span class="estado-tag estado-programado">⏰ Programado</span>';
+  }
+  let scoreHtml='';
+  if(m.estado!=='PROGRAMADO' && m.home_score!=null && m.away_score!=null){
+    scoreHtml=`<div class="score-row"><span class="score">${m.home_score} - ${m.away_score}</span></div>`;
+  }
+  const confColor=m.confidence==='Alta'?'#1ee07a':m.confidence==='Media'?'#f5d547':'#ff6b6b';
+  const confIcon=m.confidence==='Alta'?'icons/conf-alta.svg':m.confidence==='Media'?'icons/conf-media.svg':'icons/conf-limitada.svg';
+  const confHtml=m.confidence?`<span class="conf-badge conf-${m.confidence.toLowerCase()}"><img src="${confIcon}" class="conf-icon" alt=""><span class="conf-dot" style="background:${confColor}"></span>Conf: ${esc(m.confidence)}</span>`:'';
+  return `<div class="card" data-league="${esc(m.league||'')}" data-home="${esc(m.home||'')}" data-away="${esc(m.away||'')}" data-estado="${esc(m.estado||'PROGRAMADO')}" data-acierto="${m.acierto===true?'acierto':m.acierto===false?'fallo':''}"><div class="badge-row"><span class="tag"><img src="${iconPath}" class="league-icon" onerror="this.style.display='none';this.nextElementSibling.style.display='inline'"><span style="display:none">${fallbackEmoji}</span> ${esc(m.league_code||'')}</span>${badgeHtml}</div><div class="league">${esc(m.league||'Futbol')} • ${esc(m.time||'')} • ${esc(m.date||'')}</div><div class="teams">${esc(m.home)} <span style="color:#8aa0c8">vs</span> ${esc(m.away)}</div>${scoreHtml}<div class="prob-row"><span class="prob">L: ${p['1']}%</span><span class="prob">E: ${p['X']}%</span><span class="prob">V: ${p['2']}%</span><span class="total">Σ ${total}%</span></div><div class="meta fav-conf-row"><span>⭐ Favorito: <b>${esc(m.favorite||'')}</b></span>${confHtml}</div></div>`;
+}
+
+function getFiltered(){
+  let filtered=allMatches;
+  const f = currentFilter;
+  const norm = (s)=> (s||'').toLowerCase().trim();
+  const lc = (m)=> norm(m.league_code);
+  const ln = (m)=> norm(m.league);
+
+  if(f==='top'){
+    filtered=allMatches.filter(m=>m.confidence==='Alta'||m.confidence==='Media');
+  } else if(f==='liga-mx'){
+    filtered=allMatches.filter(m=>lc(m).includes('mex')||ln(m).includes('liga mx')||ln(m).includes('mexico'));
+  } else if(f==='mls'){
+    filtered=allMatches.filter(m=>lc(m).includes('usa')||ln(m).includes('mls'));
+  } else if(f==='champions'){
+    filtered=allMatches.filter(m=>lc(m).includes('champions')||ln(m).includes('champions'));
+  } else if(f==='europa'){
+    filtered=allMatches.filter(m=>['eng.1','esp.1','ita.1','ger.1','fra.1'].includes(lc(m)));
+  } else if(f.startsWith('league:')){
+    const code=f.split(':')[1];
+    const codeNorm=norm(code);
+    filtered=allMatches.filter(m=>{
+      const c=lc(m);
+      const n=ln(m);
+      if(c===codeNorm) return true;
+      if(codeNorm==='eng.fa') return c==='eng.fa' || n.includes('fa cup');
+      if(codeNorm==='eng.1') return c==='eng.1' || (n.includes('premier league') && !n.includes('fa cup'));
+      if(codeNorm==='esp.1') return c==='esp.1' || n.includes('la liga') || (n.includes('liga') && n.includes('españa'));
+      if(codeNorm==='ita.1') return c==='ita.1' || n.includes('serie a');
+      if(codeNorm==='ger.1') return c==='ger.1' || n.includes('bundesliga');
+      if(codeNorm==='fra.1') return c==='fra.1' || n.includes('ligue 1');
+      if(codeNorm==='mex.1') return c==='mex.1' || n.includes('liga mx') || n.includes('mexico');
+      if(codeNorm==='usa.1') return c==='usa.1' || n.includes('mls');
+      if(codeNorm==='bra.1') return c==='bra.1' || n.includes('brasil') || n.includes('brasileirão');
+      if(codeNorm==='arg.1') return c==='arg.1' || n.includes('argentina');
+      if(codeNorm==='uefa.champions') return c==='uefa.champions' || n.includes('champions league');
+      if(codeNorm==='uefa.europa') return (c==='uefa.europa' || n.includes('europa league')) && !c.includes('conf');
+      if(codeNorm==='uefa.europa.conf') return c==='uefa.europa.conf' || n.includes('conference');
+      if(codeNorm==='concacaf.champions') return c.includes('concacaf') || n.includes('concachampions');
+      return false;
+    });
+  } else if(f.startsWith('continent:')){
+    const cont=f.split(':')[1];
+    if(cont==='america'){
+      filtered=allMatches.filter(m=>{
+        const c=lc(m); const n=ln(m);
+        return c.includes('mex')||c.includes('usa')||c.includes('bra')||c.includes('arg')||c.includes('concacaf')||n.includes('liga mx')||n.includes('mls')||n.includes('brasil')||n.includes('argentina')||n.includes('concachampions')||n.includes('mexico');
+      });
+    } else if(cont==='europa'){
+      filtered=allMatches.filter(m=>{
+        const c=lc(m); const n=ln(m);
+        return c.includes('eng')||c.includes('esp')||c.includes('ita')||c.includes('ger')||c.includes('fra')||c.includes('uefa')||n.includes('premier')||n.includes('la liga')||n.includes('serie a')||n.includes('bundesliga')||n.includes('ligue 1')||n.includes('champions')||n.includes('europa league')||n.includes('conference');
+      });
+    }
+  } else if(f.startsWith('country:')){
+    const ctry=f.split(':')[1];
+    if(ctry==='mx') filtered=allMatches.filter(m=>lc(m).includes('mex')||ln(m).includes('mexico')||ln(m).includes('liga mx'));
+    else if(ctry==='usa') filtered=allMatches.filter(m=>lc(m).includes('usa')||lc(m).includes('concacaf')||ln(m).includes('mls'));
+    else if(ctry==='eng') filtered=allMatches.filter(m=>lc(m).includes('eng')||ln(m).includes('premier')||ln(m).includes('fa cup'));
+    else if(ctry==='esp') filtered=allMatches.filter(m=>lc(m).includes('esp')||ln(m).includes('la liga'));
+    else if(ctry==='ita') filtered=allMatches.filter(m=>lc(m).includes('ita')||ln(m).includes('serie a'));
+    else if(ctry==='ger') filtered=allMatches.filter(m=>lc(m).includes('ger')||ln(m).includes('bundesliga'));
+    else if(ctry==='fra') filtered=allMatches.filter(m=>lc(m).includes('fra')||ln(m).includes('ligue'));
+    else if(ctry==='uefa') filtered=allMatches.filter(m=>lc(m).startsWith('uefa')||ln(m).includes('champions')||ln(m).includes('europa')||ln(m).includes('conference'));
+    else if(ctry==='br') filtered=allMatches.filter(m=>lc(m).includes('bra')||ln(m).includes('brasil'));
+    else if(ctry==='ar') filtered=allMatches.filter(m=>lc(m).includes('arg')||ln(m).includes('argentina'));
+  } else if(f==='search'){
+    const q=norm($searchInput.value);
+    const liga=$leagueSelect.value;
+    if(!q&&liga==='all'){ filtered=[]; }
+    else {
+      filtered=allMatches.filter(m=>{
+        const matchQ=!q||norm(m.home).includes(q)||norm(m.away).includes(q)||ln(m).includes(q);
+        const matchLiga=liga==='all'||(m.league||'').includes(liga);
+        return matchQ&&matchLiga;
+      });
+    }
+  } else if(f==='aciertos'){
+    filtered=allMatches.filter(m=>m.estado==='FINALIZADO'&&m.acierto===true);
+  } else if(f==='fallos'){
+    filtered=allMatches.filter(m=>m.estado==='FINALIZADO'&&m.acierto===false);
+  } else if(f==='combinada'){
+    filtered=allMatches.filter(m=>m.confidence==='Alta'||m.confidence==='Media').slice(0,6);
+  } else if(f==='progol'){
+    filtered=allMatches.slice(0,14);
+  } else if(f==='analytics'){
+    filtered=allMatches;
+  }
+  return filtered;
+}
 
 function groupByEstado(matches){
   const enJuego=matches.filter(m=>m.estado==='EN_JUEGO');
@@ -364,17 +297,25 @@ function renderSection(title,matches){
   return html;
 }
 
+function resetToAll(){
+  document.querySelectorAll('.menu-item').forEach(b=>b.classList.remove('active'));
+  const btn=document.querySelector('[data-filter="all"]');
+  if(btn) btn.classList.add('active');
+  currentFilter='all';
+  renderAll();
+}
+
 function renderAll(){
   try{
     const filtered=getFiltered();
-    // ANALYTICS - SOLO ANALYTICS, SIN TARJETAS (como pide Davo)
+    // ANALYTICS - SOLO ANALYTICS, SIN TARJETAS
     if(currentFilter==='analytics'){
       const finalizados = filtered.filter(m=>m.estado==='FINALIZADO');
       const aciertos = finalizados.filter(m=>m.acierto===true).length;
       const fallos = finalizados.filter(m=>m.acierto===false).length;
       const total = finalizados.length;
       const pct = total>0?Math.round(aciertos/total*100):0;
-      $grid.innerHTML = renderAnalytics(allMatchesSeason.length>0?allMatchesSeason:filtered) + renderAnalyticsExtended(allMatchesSeason.length>0?allMatchesSeason:filtered);
+      $grid.innerHTML = renderAnalytics(filtered) + renderAnalyticsExtended(filtered);
       $countBadge.textContent = `📊 ${total} finalizados - ${aciertos}✅ ${fallos}❌ - ${pct}% acierto`;
       return;
     }
@@ -445,7 +386,7 @@ function renderAll(){
       if(finalizados.length>0) html+=renderSection(`✅ Finalizados (${finalizados.length})`,finalizados);
       if(enJuego.length===0&&programados.length===0&&finalizados.length===0) html+=filtered.map(cardA).join('');
     }
-    html+=`<div class="section-title">📊 Transparencia</div><div class="card"><div class="meta">Probabilidad != recomendación segura. Suma 1X2 ~100% validado.</div><div class="meta">Versión: V64.6.0 Paso7 Temporada Completa - calendario filtro + recientes primero</div></div>`;
+    html+=`<div class="section-title">📊 Transparencia</div><div class="card"><div class="meta">Probabilidad != recomendación segura. Suma 1X2 ~100% validado.</div><div class="meta">Versión: V71 SOLO Analytics - sin tarjetas - FIX Europa y FA Cup</div></div>`;
     $grid.innerHTML=html;
   }catch(e){
     log(`RENDER ERROR: ${e.message}`,'err');
@@ -453,19 +394,11 @@ function renderAll(){
   }
 }
 
-
 function setFilterAciertos(){
   document.querySelectorAll('.menu-item').forEach(b=>b.classList.remove('active'));
   const btn=document.querySelector('[data-filter="aciertos"]');
   if(btn) btn.classList.add('active');
   currentFilter='aciertos';
-  renderAll();
-}
-function resetToAll(){
-  document.querySelectorAll('.menu-item').forEach(b=>b.classList.remove('active'));
-  const btn=document.querySelector('[data-filter="all"]');
-  if(btn) btn.classList.add('active');
-  currentFilter='all';
   renderAll();
 }
 function setFilterFallos(){
@@ -476,8 +409,68 @@ function setFilterFallos(){
   renderAll();
 }
 
-let allMatchesSeason = []; // Toda la temporada
-let seasonLoaded = false;
+
+// PASO 8: Temporada completa por liga
+async function loadSeasonAll(){
+  $status.textContent=`Cargando temporada completa 15 ligas...`;
+  try{
+    const data=await api(`/api/calendar/season?limit=1000`);
+    allMatches=data.matches||[];
+    allMatches.sort((a,b)=>{
+      const da = (a.date||'') + ' ' + (a.time||'');
+      const db = (b.date||'') + ' ' + (b.time||'');
+      return db.localeCompare(da);
+    });
+    $status.textContent=`✅ Temporada completa: ${data.count} partidos - ${data.dates?data.dates.length+' fechas':''}`;
+    log(`Temporada: ${data.count} partidos`, 'ok');
+    renderAll();
+  }catch(e){
+    $status.textContent=`Error temporada: ${e.message}`;
+    loadFast();
+  }
+}
+
+async function loadSeasonLeague(leagueCode){
+  $status.textContent=`Cargando temporada ${leagueCode}...`;
+  try{
+    const data=await api(`/api/calendar/season/league?league=${leagueCode}&limit=500`);
+    // Si estamos en vista de liga, reemplazar solo los de esa liga o merge?
+    // Merge con allMatches para no perder otras ligas
+    const nuevos = data.matches||[];
+    // Actualizar allMatches: quitar viejos de esa liga y agregar nuevos
+    const otros = allMatches.filter(m=> (m.league_code||'')!==leagueCode);
+    allMatches = [...otros, ...nuevos];
+    allMatches.sort((a,b)=>{
+      const da = (a.date||'') + ' ' + (a.time||'');
+      const db = (b.date||'') + ' ' + (b.time||'');
+      return db.localeCompare(da);
+    });
+    $status.textContent=`✅ ${leagueCode}: ${data.count} partidos temporada`;
+    log(`${leagueCode} temporada: ${data.count}`, 'ok');
+    renderAll();
+  }catch(e){
+    $status.textContent=`Error temporada ${leagueCode}: ${e.message}`;
+  }
+}
+
+async function syncTemporadaCompleta(){
+  $status.textContent=`Sincronizando temporada 15 ligas (2-3 min)...`;
+  try{
+    await api(`/api/calendar/sync_season`);
+    log('Sincronización temporada iniciada, espera 2-3 min y luego Cargar temporada', 'ok');
+    setTimeout(loadSeasonAll, 120000);
+  }catch(e){
+    $status.textContent=`Error sync temporada: ${e.message}`;
+  }
+}
+
+async function loadCountByLeague(){
+  try{
+    const data=await api(`/api/calendar/count_by_league`);
+    log(`Ligas en BD: ${data.leagues.map(l=>l.league_code+':'+l.c).join(', ')}`, 'ok');
+  }catch(e){}
+}
+
 
 async function loadFast(){
   const date=$dateInput.value||new Date().toLocaleDateString('en-CA');
@@ -489,53 +482,17 @@ async function loadFast(){
     renderAll();
   }catch(e){ $status.textContent=`Error: ${e.message}`; }
 }
-
-async function loadSeason(){
-  $status.textContent=`Cargando temporada completa (últimos 90 días)...`;
-  try{
-    const data=await api(`/api/calendar/season?limit=1000`);
-    allMatchesSeason=data.matches||[];
-    allMatches=allMatchesSeason; // Usar temporada como base
-    seasonLoaded=true;
-    // Ordenar por fecha más reciente primero
-    allMatches.sort((a,b)=>{
-      const da = (a.date||'') + ' ' + (a.time||'');
-      const db = (b.date||'') + ' ' + (b.time||'');
-      return db.localeCompare(da); // DESC - recientes primero
-    });
-    $status.textContent=`✅ Temporada: ${data.count} partidos - recientes primero`;
-    // Llenar calendario con fechas disponibles
-    if(data.dates && data.dates.length>0){
-      log(`Temporada fechas disponibles: ${data.dates.length} días`, 'ok');
-    }
-    renderAll();
-  }catch(e){ 
-    $status.textContent=`Error temporada: ${e.message} - Intentando carga rápida`;
-    loadFast();
-  }
-}
-
-async function syncSeason(){
-  $status.textContent=`Sincronizando temporada completa (90 días)... esto tarda 2-3 min`;
-  try{
-    await api(`/api/calendar?refresh=1&full=1`);
-    log('Sincronización temporada iniciada, esperando 15s...', 'ok');
-    setTimeout(loadSeason, 15000);
-  }catch(e){ $status.textContent=`Error sync temporada: ${e.message}`; }
-}
-
 async function refresh(){
   const date=$dateInput.value||new Date().toLocaleDateString('en-CA');
-  $status.textContent=`Sincronizando ${date} con 15 ligas ESPN...`;
+  $status.textContent=`Sincronizando ${date}...`;
   try{
-    await api(`/api/calendar?date=${date}&refresh=1`);
-    log('Sincronizando 15 ligas, esperando 8s...');
-    setTimeout(loadFast,8000);
+    await api(`/api/calendar?refresh=1&date=${date}`);
+    setTimeout(loadFast, 3000);
   }catch(e){ $status.textContent=`Error sync: ${e.message}`; }
 }
 
-// Delegación para menú árbol - funciona con sub-menús
-document.addEventListener('click', (e)=>{
+// Delegación para menú árbol
+document.addEventListener('click', async (e)=>{
   const btn = e.target.closest('.menu-item');
   if(!btn) return;
   if(!btn.dataset.filter) return;
@@ -544,28 +501,42 @@ document.addEventListener('click', (e)=>{
   currentFilter=btn.dataset.filter;
   if(currentFilter==='search') $searchBox.style.display='block';
   else $searchBox.style.display='none';
+  
+  // PASO 8: Si es liga específica y tenemos pocos partidos de esa liga, cargar temporada de esa liga
+  if(currentFilter.startsWith('league:')){
+    const code = currentFilter.split(':')[1];
+    const countLiga = allMatches.filter(m=> (m.league_code||'').toLowerCase()===code.toLowerCase()).length;
+    if(countLiga < 10){
+      await loadSeasonLeague(code);
+      return;
+    }
+  }
+  // Si es continente y tenemos pocos, cargar temporada completa
+  if(currentFilter.startsWith('continent:') && allMatches.length < 50){
+    await loadSeasonAll();
+    return;
+  }
+  
   renderAll();
-  // Scroll al top en móvil
   if(window.innerWidth<800) document.querySelector('.main').scrollTop=0;
 });
+
 $searchInput.addEventListener('input',renderAll);
 $leagueSelect.addEventListener('change',renderAll);
-$dateInput.addEventListener('change', ()=>{
-  log(`Filtro calendario: ${$dateInput.value}`, 'ok');
-  renderAll();
-});
-document.getElementById('loadBtn').addEventListener('click',loadSeason);
-document.getElementById('refreshBtn').addEventListener('click',()=>{
-  if(confirm('¿Sincronizar temporada completa (90 días)? Tarda 2-3 min')) syncSeason();
-  else refresh();
-});
-document.getElementById('loadBtn').textContent='Cargar temporada';
+document.getElementById('loadBtn').addEventListener('click',loadSeasonAll);
+document.getElementById('refreshBtn').addEventListener('click',()=>{ if(confirm('¿Sincronizar temporada completa 15 ligas? Tarda 2-3 min')) syncTemporadaCompleta(); else refresh(); });
 
 (async()=>{
   $dateInput.value=new Date().toLocaleDateString('en-CA');
   try{
     const h=await api('/api/health');
     $status.textContent=`API: ${h.version} - ${h.records} partidos - Cargando temporada...`;
-    await loadSeason();
+    await loadCountByLeague();
+    // Si hay pocos partidos en BD, cargar temporada completa automaticamente
+    if(h.records < 100){
+      await loadSeasonAll();
+    } else {
+      loadFast();
+    }
   }catch{ $status.textContent='API no conecta.'; }
 })();

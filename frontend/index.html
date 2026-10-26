@@ -1,17 +1,17 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LiAn V64.6.0 - Multi-Liga Mundial</title>
-<link rel="stylesheet" href="style.css?v=72">
+<link rel="stylesheet" href="style.css?v=80">
 </head>
 <body>
 <div class="layout">
   <aside class="sidebar">
     <div class="logo">LiAn <span>V64.6.0</span><br><small>REAL - MULTI-LIGA</small></div>
     <nav class="menu">
-      <!-- ORDEN NUEVO COMO CAPTURA v68 -->
       <button class="menu-item" data-filter="search">🔍 Buscar</button>
       <button class="menu-item active" data-filter="all">⊙ Partidos del día</button>
       <button class="menu-item" data-filter="top">★ Top Picks</button>
@@ -20,7 +20,6 @@
 
       <div class="menu-separator"></div>
 
-      <!-- AMERICA -->
       <div class="menu-group">
         <button class="menu-group-header" onclick="toggleGroup('america')">
           <span>🌎 AMÉRICA</span>
@@ -68,7 +67,6 @@
         </div>
       </div>
 
-      <!-- EUROPA -->
       <div class="menu-group">
         <button class="menu-group-header" onclick="toggleGroup('europa')">
           <span>🌍 EUROPA</span>
@@ -157,14 +155,14 @@
         </select>
       </div>
       <div class="status" id="status">Cargando...</div>
-      <div class="version">Ensemble 58% Poisson / 16% ELO / 10% Forma / 16% MC6000<br>Prob != recomendación<br>V64.6.0 Paso7 SOLO Analytics - sin tarjetas</div>
+      <div class="version">V71 SOLO Analytics - sin tarjetas<br>FIX Europa y FA Cup exacto<br>Estadísticas antemenúltimo</div>
     </div>
   </aside>
   <main class="main">
     <div class="top-bar">
       <input type="date" id="dateInput">
-      <button id="loadBtn">Cargar temporada</button>
-      <button id="refreshBtn" class="primary">Sincronizar temporada (90 días)</button>
+      <button id="loadBtn">Cargar temporada completa</button>
+      <button id="refreshBtn" class="primary">Sincronizar temporada (15 ligas)</button>
       <span class="badge" id="countBadge">0 partidos</span>
     </div>
     <div class="grid" id="grid"></div>
@@ -195,6 +193,6 @@ function toggleCountry(id){
   }
 }
 </script>
-<script src="app.js?v=72"></script>
+<script src="app.js?v=80"></script>
 </body>
 </html>

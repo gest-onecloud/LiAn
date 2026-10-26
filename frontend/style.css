@@ -238,3 +238,33 @@ body{font-family:Inter,Arial,sans-serif;background:#0b1220;color:#e8eefc;margin:
 .conf-detail{margin-bottom:8px}
 .conf-bar{height:5px;background:#0a1123;border-radius:999px;margin-top:4px;overflow:hidden}
 .conf-bar .bar-fill{height:100%;border-radius:999px}
+
+/* Paso 7.1 - Agrupación por fecha */
+.fecha-group{background:#0e172d;border:1px solid #1e2f55;border-radius:12px;padding:12px;margin-bottom:16px}
+.fecha-header{font-size:14px;font-weight:800;color:#7dd3ff;margin-bottom:10px;padding:6px 10px;background:#121d36;border-radius:8px;border-left:4px solid #1ee07a}
+
+/* Paso 7.2 - Horizontal + Próximos arriba 2 fechas + Pasados abajo */
+
+.cards-horizontal::-webkit-scrollbar{height:8px}
+.cards-horizontal::-webkit-scrollbar-thumb{background:#1e2f55;border-radius:999px}
+.cards-horizontal .card{min-width:300px;max-width:320px;flex-shrink:0}
+.proximos-section{margin-bottom:24px;border:2px solid #1ee07a22;border-radius:14px;padding:4px;background:linear-gradient(180deg,#0e1f18 0%,#0e172d 100%)}
+.pasados-section{border:2px solid #ff6b6b22;border-radius:14px;padding:4px;background:linear-gradient(180deg,#1f0e0e 0%,#0e172d 100%)}
+.fecha-group.futuros{border-left:4px solid #1ee07a;background:#0e1f18}
+.fecha-group.pasados{border-left:4px solid #ff6b6b;background:#1a1212}
+.fecha-header.futuros{background:#0e2a1f;color:#1ee07a;border-left-color:#1ee07a}
+.fecha-header.pasados{background:#2a1212;color:#ff9a9a;border-left-color:#ff6b6b}
+@media(max-width:700px){.cards-horizontal .card{min-width:260px;max-width:280px}}
+
+/* Paso 7.3 - Grid 3 columnas + separador fechas (como v59) */
+.grid-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.fecha-separator{font-size:13px;font-weight:800;padding:8px 12px;border-radius:10px;margin:16px 0 8px;letter-spacing:0.3px}
+.fecha-separator.en-juego{background:linear-gradient(90deg,#2a1212,#1a0e0e);color:#ff6b6b;border:1px solid #ff6b6b44;border-left:4px solid #ff0000}
+.fecha-separator.proximos{background:linear-gradient(90deg,#0e2a1f,#0e1f18);color:#1ee07a;border:1px solid #1ee07a44;border-left:4px solid #1ee07a}
+.fecha-separator.finalizados{background:linear-gradient(90deg,#121e2a,#121d36);color:#7dd3ff;border:1px solid #7dd3ff44;border-left:4px solid #7dd3ff}
+.fecha-header-grid{font-size:13px;font-weight:700;color:#8aa0c8;background:#0e172d;padding:6px 10px;border-radius:8px;margin:8px 0;border-left:3px solid #1e2f55}
+@media(max-width:1100px){.grid-cards{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:700px){.grid-cards{grid-template-columns:1fr}}
+/* Remove old horizontal styles if needed */
+
+.proximos-section,.pasados-section{border:none;background:none;padding:0}

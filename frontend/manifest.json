@@ -1,0 +1,23 @@
+{
+  "leagues": {
+    "mex.1": "icons/mex.1.svg",
+    "usa.1": "icons/usa.1.svg",
+    "bra.1": "icons/bra.1.svg",
+    "arg.1": "icons/arg.1.svg",
+    "eng.1": "icons/eng.1.svg",
+    "esp.1": "icons/esp.1.svg",
+    "ita.1": "icons/ita.1.svg",
+    "ger.1": "icons/ger.1.svg",
+    "fra.1": "icons/fra.1.svg",
+    "uefa.champions": "icons/uefa.champions.svg",
+    "uefa.europa": "icons/uefa.europa.svg",
+    "uefa.europa.conf": "icons/uefa.europa.conf.svg",
+    "concacaf.champions": "icons/concacaf.champions.svg",
+    "eng.fa": "icons/eng.fa.svg"
+  },
+  "confidence": {
+    "Alta": "icons/conf-alta.svg",
+    "Media": "icons/conf-media.svg",
+    "Limitada": "icons/conf-limitada.svg"
+  }
+}
