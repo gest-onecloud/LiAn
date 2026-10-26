@@ -286,13 +286,13 @@ function renderAll(){
   }
 
   html += `<div class="section-title">📊 Transparencia</div>`;
-  html += `<div class="card"><div class="meta">Probabilidad != recomendación segura. Suma 1X2 ~100% validado.</div><div class="meta">Fuente: ESPN_MULTI_15LIGAS + Ensemble 58%/16%/10%/16% 6000 sims - Con marcador y acierto</div><div class="meta">Estados: ⏰ Programado • 🔴 En Juego • ✅ Finalizado con marcador</div><div class="meta">Versión: V64.6.0 Paso5.2 Buscador + Marcador + Estados</div></div>`;
+  html += `<div class="card"><div class="meta">Probabilidad != recomendación segura. Suma 1X2 ~100% validado.</div><div class="meta">Fuente: ESPN_MULTI_15LIGAS + Ensemble 58%/16%/10%/16% 6000 sims - Con marcador y acierto</div><div class="meta">Estados: ⏰ Programado • 🔴 En Juego • ✅ Finalizado con marcador</div><div class="meta">Versión: V64.6.0 Paso5.6 Buscador + Marcador + Estados</div></div>`;
 
   $grid.innerHTML = html;
 }
 
 async function loadFast(){
-  const date=$dateInput.value||new Date().toISOString().slice(0,10);
+  const date=$dateInput.value||new Date().toLocaleDateString('en-CA');
   $status.textContent=`Cargando ${date} - 15 ligas...`;
   try{
     const data=await api(`/api/calendar/fast?date=${date}`);
@@ -302,7 +302,7 @@ async function loadFast(){
   }catch(e){ $status.textContent=`Error: ${e.message}`; }
 }
 async function refresh(){
-  const date=$dateInput.value||new Date().toISOString().slice(0,10);
+  const date=$dateInput.value||new Date().toLocaleDateString('en-CA');
   $status.textContent=`Sincronizando ${date} con 15 ligas ESPN...`;
   try{
     await api(`/api/calendar?date=${date}&refresh=1`);
@@ -331,7 +331,7 @@ $leagueSelect.addEventListener('change', renderAll);
 document.getElementById('loadBtn').addEventListener('click',loadFast);
 document.getElementById('refreshBtn').addEventListener('click',refresh);
 (async()=>{
-  $dateInput.value=new Date().toISOString().slice(0,10);
+  $dateInput.value=new Date().toLocaleDateString('en-CA'); // Fecha local México, no UTC
   try{
     const h=await api('/api/health');
     $status.textContent=`API: ${h.version} - ${h.records} partidos`;

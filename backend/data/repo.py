@@ -1,4 +1,3 @@
-
 import sqlite3
 import re
 from pathlib import Path
@@ -11,10 +10,10 @@ class Repo:
         self.conn = sqlite3.connect(str(self.path), check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.init_all()
+        self.migrate()
 
     def init_all(self):
         cur = self.conn.cursor()
-        # Tabla matches - unica fuente de verdad
         cur.execute("""
         CREATE TABLE IF NOT EXISTS matches (
             id TEXT PRIMARY KEY,
@@ -25,13 +24,18 @@ class Repo:
             league TEXT,
             competition TEXT,
             status TEXT DEFAULT 'NS',
+            status_detail TEXT DEFAULT '',
+            estado TEXT DEFAULT 'PROGRAMADO',
+            league_code TEXT DEFAULT '',
+            home_score INTEGER,
+            away_score INTEGER,
+            score TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
         """)
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_unique ON matches(date, home, away)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_matches_date ON matches(date)")
 
-        # Tabla predictions - para despues
         cur.execute("""
         CREATE TABLE IF NOT EXISTS predictions (
             match_id TEXT PRIMARY KEY,
@@ -48,7 +52,6 @@ class Repo:
         )
         """)
 
-        # Tabla sync_log - para saber cuando se sincronizo
         cur.execute("""
         CREATE TABLE IF NOT EXISTS sync_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -62,6 +65,33 @@ class Repo:
         """)
         self.conn.commit()
 
+    def migrate(self):
+        """Migración para DBs viejas sin columnas nuevas"""
+        try:
+            cur = self.conn.cursor()
+            cur.execute("PRAGMA table_info(matches)")
+            cols = [r['name'] for r in cur.fetchall()]
+            to_add = []
+            if 'status_detail' not in cols:
+                to_add.append("ALTER TABLE matches ADD COLUMN status_detail TEXT DEFAULT ''")
+            if 'estado' not in cols:
+                to_add.append("ALTER TABLE matches ADD COLUMN estado TEXT DEFAULT 'PROGRAMADO'")
+            if 'league_code' not in cols:
+                to_add.append("ALTER TABLE matches ADD COLUMN league_code TEXT DEFAULT ''")
+            if 'home_score' not in cols:
+                to_add.append("ALTER TABLE matches ADD COLUMN home_score INTEGER")
+            if 'away_score' not in cols:
+                to_add.append("ALTER TABLE matches ADD COLUMN away_score INTEGER")
+            if 'score' not in cols:
+                to_add.append("ALTER TABLE matches ADD COLUMN score TEXT")
+            for sql in to_add:
+                print(f"[repo] Migrando: {sql}")
+                cur.execute(sql)
+            if to_add:
+                self.conn.commit()
+        except Exception as e:
+            print(f"[repo] migrate error: {e}")
+
     def upsert_matches(self, matches):
         if not matches:
             return 0
@@ -69,15 +99,38 @@ class Repo:
         count = 0
         for m in matches:
             mid = f"{m['date']}_{m['home']}_{m['away']}".lower().replace(' ', '_')
+            # Sanitizar para no romper
+            mid = re.sub(r'[^a-z0-9_]+', '_', mid)
             cur.execute("""
-            INSERT INTO matches (id, date, time, home, away, league, competition, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO matches (id, date, time, home, away, league, competition, status, status_detail, estado, league_code, home_score, away_score, score)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 time=excluded.time,
                 league=excluded.league,
                 competition=excluded.competition,
-                status=excluded.status
-            """, (mid, m.get('date'), m.get('time',''), m.get('home'), m.get('away'), m.get('league',''), m.get('competition',''), m.get('status','NS')))
+                status=excluded.status,
+                status_detail=excluded.status_detail,
+                estado=excluded.estado,
+                league_code=excluded.league_code,
+                home_score=excluded.home_score,
+                away_score=excluded.away_score,
+                score=excluded.score
+            """, (
+                mid,
+                m.get('date'),
+                m.get('time',''),
+                m.get('home'),
+                m.get('away'),
+                m.get('league',''),
+                m.get('competition',''),
+                m.get('status','NS'),
+                m.get('status_detail',''),
+                m.get('estado','PROGRAMADO'),
+                m.get('league_code',''),
+                m.get('home_score'),
+                m.get('away_score'),
+                m.get('score')
+            ))
             count += 1
         self.conn.commit()
         return count
@@ -94,16 +147,19 @@ class Repo:
 
     def delete_by_date(self, date_str):
         try:
-            with self._conn() as c:
-                cur = c.cursor()
-                cur.execute("DELETE FROM matches WHERE date=?", (date_str,))
-                return cur.rowcount
+            cur = self.conn.cursor()
+            cur.execute("DELETE FROM matches WHERE date=?", (date_str,))
+            self.conn.commit()
+            return cur.rowcount
         except Exception as e:
             print(f"[repo] delete_by_date error: {e}")
             return 0
 
     def log_sync(self, source, date, count, duration_ms, status):
-        cur = self.conn.cursor()
-        cur.execute("INSERT INTO sync_log (source, date, count, duration_ms, status) VALUES (?,?,?,?,?)",
-                    (source, date, count, duration_ms, status))
-        self.conn.commit()
+        try:
+            cur = self.conn.cursor()
+            cur.execute("INSERT INTO sync_log (source, date, count, duration_ms, status) VALUES (?,?,?,?,?)",
+                        (source, date, count, duration_ms, status))
+            self.conn.commit()
+        except Exception as e:
+            print(f"[repo] log_sync error: {e}")

@@ -1,12 +1,8 @@
-
 """
-LiAn V64.6.0 - Paso 5.4 FIX FECHA + ESTADO REAL + LIMPIEZA
-- Usa fecha REAL de ESPN
-- Detecta FINAL con SCORE real, no solo status
-- Limpia DB vieja
+LiAn V64.6.0 - Paso 5.5 FIX FINAL - Zona horaria + Marcador + Todos los partidos
 """
 import time
-from datetime import datetime, date as date_obj
+from datetime import datetime, date as date_obj, timedelta
 from .http_client import get_json
 
 LIGAS_MUNDIALES = [
@@ -59,53 +55,63 @@ def _parse_espn(requested_date, raw, liga_code, liga_name):
                 as_ = None
             
             status_type = comp.get('status',{}).get('type',{})
-            status_name = str(status_type.get('name','NS')).upper()
-            status_detail = str(status_type.get('detail','')).upper()
+            status_name = str(status_type.get('name','NS'))
+            status_detail = str(status_type.get('detail',''))
             status_state = str(status_type.get('state','pre')).lower()
             
-            # DETECCION DE ESTADO ROBUSTA - FIX para STATUS_FINAL_PEN
-            estado = 'PROGRAMADO'
-            # Si hay marcador y es post, es FINALIZADO
+            upper_name = status_name.upper()
+            upper_detail = status_detail.upper()
             has_score = hs is not None and as_ is not None
-            is_final_keyword = any(k in status_name or k in status_detail for k in ['FINAL', 'FT', 'AET', 'PEN', 'FULL_TIME'])
-            is_in_keyword = any(k in status_name or k in status_detail for k in ['IN_PROGRESS', 'LIVE', '1H', '2H', 'HALF', 'HT'])
             
-            if status_state == 'post' or is_final_keyword:
+            # Si tiene marcador, siempre FINALIZADO (más confiable que status)
+            if has_score:
                 estado = 'FINALIZADO'
-            elif status_state == 'in' or is_in_keyword:
+            elif status_state == 'post':
+                estado = 'FINALIZADO'
+            elif any(k in upper_name for k in ['STATUS_FINAL', 'STATUS_FULL_TIME', 'FINAL', 'FT', 'FULL_TIME', 'AET', 'PEN']):
+                estado = 'FINALIZADO'
+            elif any(k in upper_detail for k in ['FINAL', 'FT', 'FULL-TIME', 'FULL TIME', 'FINAL -']):
+                estado = 'FINALIZADO'
+            elif status_state == 'post':
+                estado = 'FINALIZADO'
+            elif status_state == 'in' or any(k in upper_name or k in upper_detail for k in ['IN_PROGRESS', 'LIVE', '1H', '2H', 'HALF']):
                 estado = 'EN_JUEGO'
             else:
-                # Si tiene marcador y no es pre, probablemente finalizado
-                if has_score and status_state != 'pre':
-                    estado = 'FINALIZADO'
-                else:
-                    estado = 'PROGRAMADO'
+                estado = 'PROGRAMADO'
+            # REGLA DEFINITIVA: si tiene marcador, siempre es FINALIZADO
+            if has_score:
+                estado = 'FINALIZADO'
             
             dt_str = ev.get('date') or comp.get('date') or ''
             t = ''
             fecha_real = requested_date
+            fecha_real_utc = requested_date
             if dt_str:
                 try:
                     dt = datetime.fromisoformat(dt_str.replace('Z','+00:00'))
-                    t = dt.strftime('%H:%M')
-                    fecha_real = dt.strftime('%Y-%m-%d')
+                    dt_mex = dt - timedelta(hours=6)
+                    t = dt_mex.strftime('%H:%M')
+                    fecha_real = dt_mex.strftime('%Y-%m-%d')
+                    fecha_real_utc = dt.strftime('%Y-%m-%d')
                 except:
                     t = dt_str[11:16] if len(dt_str)>16 else ''
                     try:
                         fecha_real = dt_str[:10]
+                        fecha_real_utc = dt_str[:10]
                     except:
                         pass
             
             matches.append({
                 "date": fecha_real,
+                "date_utc": fecha_real_utc,
                 "time": t,
                 "home": home_name,
                 "away": away_name,
                 "league": liga_name,
                 "league_code": liga_code,
                 "competition": liga_name,
-                "status": status_type.get('name','NS'),
-                "status_detail": status_type.get('detail',''),
+                "status": status_name,
+                "status_detail": status_detail,
                 "estado": estado,
                 "home_score": hs,
                 "away_score": as_,
@@ -124,49 +130,66 @@ def fetch_from_internet(requested_date: str):
 
     date_nodash = requested_date.replace('-','')
     today_str = date_obj.today().isoformat()
-    print(f"[fixture_sync] MULTI-LIGA FIX -> Trayendo 15 ligas para {requested_date} (hoy es {today_str})")
+    yesterday_str = (date_obj.today() - timedelta(days=1)).isoformat()
+    tomorrow_str = (date_obj.today() + timedelta(days=1)).isoformat()
+    
+    print(f"[fixture_sync] FIX 5.5 -> {requested_date} (hoy {today_str})")
 
     all_matches = []
 
     for liga_code, liga_name in LIGAS_MUNDIALES:
-        # Solo pedir fecha específica, no mezclar con hoy
-        urls = [
-            f"https://site.api.espn.com/apis/site/v2/sports/soccer/{liga_code}/scoreboard?dates={date_nodash}",
-        ]
-        # Si es hoy, también probar sin fecha como fallback
         if requested_date == today_str:
-            urls.append(f"https://site.api.espn.com/apis/site/v2/sports/soccer/{liga_code}/scoreboard")
+            dates_to_try = [date_nodash, 
+                           (date_obj.today() - timedelta(days=1)).strftime('%Y%m%d'),
+                           (date_obj.today() + timedelta(days=1)).strftime('%Y%m%d')]
+        else:
+            dates_to_try = [date_nodash]
         
-        for url in urls:
+        found_for_liga = []
+        for d_nodash in dates_to_try:
+            url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{liga_code}/scoreboard?dates={d_nodash}"
             try:
                 raw = get_json(url, timeout=5)
                 if raw:
                     matches = _parse_espn(requested_date, raw, liga_code, liga_name)
                     if matches:
-                        # Filtrar estrictamente por fecha solicitada
-                        filtered = [m for m in matches if m['date'] == requested_date]
-                        if filtered:
-                            print(f"[fixture_sync] {liga_code} -> {len(filtered)} partidos para {requested_date}")
-                            all_matches.extend(filtered)
-                        else:
-                            # Si no hay para esa fecha en esa liga, no agregar nada
-                            if requested_date == today_str:
-                                # Para hoy, si ESPN no trae fecha, agregar todo
-                                all_matches.extend(matches)
-                        break
-            except Exception:
+                        found_for_liga.extend(matches)
+            except:
                 continue
+        
+        if not found_for_liga and requested_date == today_str:
+            url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{liga_code}/scoreboard"
+            try:
+                raw = get_json(url, timeout=5)
+                if raw:
+                    matches = _parse_espn(requested_date, raw, liga_code, liga_name)
+                    found_for_liga.extend(matches)
+            except:
+                pass
+        
+        if found_for_liga:
+            if requested_date == today_str:
+                close_dates = {today_str, yesterday_str, tomorrow_str}
+                filtered_close = [m for m in found_for_liga if m['date'] in close_dates or m.get('date_utc') in close_dates]
+                if filtered_close:
+                    print(f"[fixture_sync] {liga_code} -> {len(filtered_close)} partidos MX")
+                    all_matches.extend(filtered_close)
+                else:
+                    all_matches.extend(found_for_liga)
+            else:
+                filtered = [m for m in found_for_liga if m['date'] == requested_date]
+                if filtered:
+                    print(f"[fixture_sync] {liga_code} -> {len(filtered)} para {requested_date}")
+                    all_matches.extend(filtered)
 
     if not all_matches:
-        print(f"[fixture_sync] ESPN vacio para {requested_date}, probando TheSportsDB")
+        print(f"[fixture_sync] ESPN vacio para {requested_date}, TheSportsDB")
         url = THESPORTSDB.format(date=requested_date)
         raw = get_json(url, timeout=8)
         if raw and raw.get('events'):
             for ev in raw.get('events', []):
                 try:
                     fecha_real = ev.get('dateEvent') or requested_date
-                    if fecha_real != requested_date:
-                        continue
                     hs = None
                     as_ = None
                     try:
@@ -176,13 +199,16 @@ def fetch_from_internet(requested_date: str):
                         pass
                     estado = 'PROGRAMADO'
                     st = str(ev.get('strStatus') or '').upper()
-                    if any(k in st for k in ['FT', 'FINAL', 'AET', 'PEN']):
+                    if any(k in st for k in ['FT', 'FINAL', 'AET', 'PEN', 'FULL_TIME']):
                         estado = 'FINALIZADO'
                     elif any(k in st for k in ['LIVE', '1H', '2H']):
                         estado = 'EN_JUEGO'
+                    elif hs is not None:
+                        estado = 'FINALIZADO'
                     
                     all_matches.append({
                         "date": fecha_real,
+                        "date_utc": fecha_real,
                         "time": (ev.get('strTime') or '')[:5],
                         "home": ev.get('strHomeTeam') or 'Local',
                         "away": ev.get('strAwayTeam') or 'Visita',
@@ -199,7 +225,6 @@ def fetch_from_internet(requested_date: str):
                 except:
                     continue
 
-    # Deduplicar por fecha+equipos+liga
     seen = set()
     unique = []
     for m in all_matches:
@@ -208,7 +233,7 @@ def fetch_from_internet(requested_date: str):
             seen.add(key)
             unique.append(m)
 
-    print(f"[fixture_sync] TOTAL MULTI-LIGA FIX para {requested_date}: {len(unique)} partidos - Fechas: {sorted(set([x['date'] for x in unique]))}")
+    print(f"[fixture_sync] TOTAL FIX 5.5 para {requested_date}: {len(unique)} partidos")
     if unique:
         estados = {}
         for u in unique:
@@ -220,16 +245,15 @@ def fetch_from_internet(requested_date: str):
 
 def sync_for_date(repo, date_str):
     start = time.time()
-    # LIMPIEZA: borrar partidos viejos de esa fecha para no dejar basura como Toluca ficticio
     try:
         deleted = repo.delete_by_date(date_str)
         if deleted:
-            print(f"[fixture_sync] Limpieza: borrados {deleted} partidos viejos de {date_str}")
+            print(f"[fixture_sync] Limpieza: {deleted} de {date_str}")
     except Exception as e:
-        print(f"[fixture_sync] No se pudo limpiar fecha {date_str}: {e}")
+        print(f"[fixture_sync] Limpieza error: {e}")
     
     matches = fetch_from_internet(date_str)
     count = repo.upsert_matches(matches) if matches else 0
     duration = int((time.time() - start)*1000)
-    repo.log_sync('ESPN_MULTI_15LIGAS_FIX_V54', date_str, count, duration, 'OK' if matches else 'EMPTY')
+    repo.log_sync('ESPN_FIX_55', date_str, count, duration, 'OK' if matches else 'EMPTY')
     return matches
