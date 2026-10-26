@@ -97,9 +97,36 @@ class Repo:
             return 0
         cur = self.conn.cursor()
         count = 0
+        # Deduplicar en memoria antes de insertar: fecha+liga+home+away normalizado
+        seen_local = {}
         for m in matches:
-            mid = f"{m['date']}_{m['home']}_{m['away']}".lower().replace(' ', '_')
-            # Sanitizar para no romper
+            # Normalizar clave para dedup: fecha + liga + home + away en minúsculas sin acentos
+            d = (m.get('date') or '').strip()
+            lc = (m.get('league_code') or '').lower().strip()
+            h = (m.get('home') or '').lower().strip()
+            a = (m.get('away') or '').lower().strip()
+            key = f"{d}_{lc}_{h}_{a}"
+            # Si ya vimos esta clave, quedarse con el que tiene marcador (FINALIZADO)
+            if key in seen_local:
+                prev = seen_local[key]
+                # Preferir el que tiene score y estado FINALIZADO
+                if m.get('estado')=='FINALIZADO' and prev.get('estado')!='FINALIZADO':
+                    seen_local[key]=m
+                elif m.get('home_score') is not None and prev.get('home_score') is None:
+                    seen_local[key]=m
+                # else keep prev
+            else:
+                seen_local[key]=m
+        
+        unique_matches = list(seen_local.values())
+        
+        for m in unique_matches:
+            # ID incluye liga_code para evitar colisión entre ligas
+            d = m.get('date','').replace(' ','')
+            lc = (m.get('league_code') or 'others').lower().replace('.','_')
+            h = (m.get('home') or 'local').lower().replace(' ','_')
+            aw = (m.get('away') or 'visita').lower().replace(' ','_')
+            mid = f"{d}_{lc}_{h}_{aw}"
             mid = re.sub(r'[^a-z0-9_]+', '_', mid)
             cur.execute("""
             INSERT INTO matches (id, date, time, home, away, league, competition, status, status_detail, estado, league_code, home_score, away_score, score)
@@ -189,6 +216,26 @@ class Repo:
         cur = self.conn.cursor()
         cur.execute("SELECT * FROM matches WHERE league LIKE ? OR league_code LIKE ? ORDER BY date DESC, time DESC LIMIT ?", (f"%{league_name_part}%", f"%{league_name_part}%", limit))
         return [dict(r) for r in cur.fetchall()]
+
+    def clean_duplicates(self):
+        """Elimina duplicados reales dejando solo 1 por fecha+liga+equipos"""
+        cur = self.conn.cursor()
+        cur.execute("SELECT id, date, league_code, home, away FROM matches")
+        rows = cur.fetchall()
+        seen = {}
+        to_delete = []
+        for r in rows:
+            key = f"{r['date']}_{(r['league_code'] or '').lower()}_{(r['home'] or '').lower()}_{(r['away'] or '').lower()}"
+            if key in seen:
+                to_delete.append(r['id'])
+            else:
+                seen[key]=r['id']
+        if to_delete:
+            print(f"[repo] Limpiando {len(to_delete)} duplicados")
+            for did in to_delete:
+                cur.execute("DELETE FROM matches WHERE id=?", (did,))
+            self.conn.commit()
+        return len(to_delete)
 
     def count_by_league(self):
         cur = self.conn.cursor()

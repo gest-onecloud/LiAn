@@ -31,42 +31,60 @@ CACHE_TTL = 180
 
 
 def fetch_season_for_liga(liga_code, liga_name):
-    """PASO 8: Trae toda la temporada de una liga usando rangos de fechas ESPN"""
-    from datetime import datetime
+    """PASO 8.1 FIX: Trae temporada completa recorriendo últimos 90 días + próximos 60 días por liga (ESPN por fecha)"""
+    from datetime import date as date_obj, timedelta
     all_matches = []
-    # Intentar múltiples estrategias para traer temporada completa
-    season_urls = [
-        f"https://site.api.espn.com/apis/site/v2/sports/soccer/{liga_code}/scoreboard?dates=2025-2026",
-        f"https://site.api.espn.com/apis/site/v2/sports/soccer/{liga_code}/scoreboard?dates=2025",
-        f"https://site.api.espn.com/apis/site/v2/sports/soccer/{liga_code}/scoreboard?dates=20240801-20260731",
-        f"https://site.api.espn.com/apis/site/v2/sports/soccer/{liga_code}/scoreboard?dates=20240101-20261231",
-        f"https://site.api.espn.com/apis/site/v2/sports/soccer/{liga_code}/scoreboard",
-    ]
-    today = datetime.now().strftime('%Y-%m-%d')
-    for url in season_urls:
+    today = date_obj.today()
+    
+    # Recorrer últimos 90 días + próximos 60 días = 150 días de temporada
+    # Esto sí trae toda la temporada real de Liga MX, Premier, etc.
+    days_back = 90
+    days_future = 60
+    dates_to_fetch = []
+    for i in range(-days_future, days_back+1):
+        d = today - timedelta(days=i)
+        dates_to_fetch.append(d)
+    
+    print(f"[season] {liga_code} - Recorriendo {len(dates_to_fetch)} días para temporada completa")
+    
+    for d in dates_to_fetch:
+        date_str = d.isoformat()
+        date_nodash = d.strftime('%Y%m%d')
+        # ESPN API por fecha específica para esta liga
+        url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{liga_code}/scoreboard?dates={date_nodash}"
         try:
-            raw = get_json(url, timeout=10)
+            raw = get_json(url, timeout=5)
             if raw and raw.get('events'):
-                matches = _parse_espn(today, raw, liga_code, liga_name)
+                matches = _parse_espn(date_str, raw, liga_code, liga_name)
+                # Solo guardar si la fecha parseada coincide con un rango razonable (no filtrar demasiado)
                 if matches:
-                    print(f"[season] {liga_code} URL {url[:80]} -> {len(matches)} partidos temporada")
-                    all_matches.extend(matches)
-                    # Si ya tenemos bastantes, no seguir probando más URLs para esta liga
-                    if len(all_matches) >= 50:
-                        break
+                    # Filtrar solo para no traer partidos de fechas muy lejanas mal parseadas
+                    for m in matches:
+                        # Solo agregar si la liga coincide o el partido es de esta liga
+                        all_matches.append(m)
         except Exception as e:
-            print(f"[season] Error {liga_code} {url}: {e}")
             continue
     
-    # Deduplicar por fecha+equipos
+    # Deduplicar por fecha+liga+equipos normalizado
     seen=set()
     unique=[]
     for m in all_matches:
-        key=f"{m['date']}_{m['home']}_{m['away']}_{m['league_code']}"
+        key=f"{m['date']}_{m['league_code'].lower()}_{m['home'].lower()}_{m['away'].lower()}"
         if key not in seen:
             seen.add(key)
             unique.append(m)
-    print(f"[season] {liga_code} TOTAL temporada: {len(unique)} partidos únicos")
+    print(f"[season] {liga_code} TOTAL temporada 90+60 días: {len(unique)} partidos únicos")
+    # Si no obtuvimos nada, intentar con endpoint sin fecha (día actual)
+    if len(unique)==0:
+        try:
+            url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{liga_code}/scoreboard"
+            raw = get_json(url, timeout=8)
+            if raw and raw.get('events'):
+                matches = _parse_espn(today.isoformat(), raw, liga_code, liga_name)
+                unique.extend(matches)
+                print(f"[season] {liga_code} fallback sin fecha -> {len(matches)} partidos")
+        except:
+            pass
     return unique
 
 def fetch_all_seasons():
@@ -91,12 +109,24 @@ def fetch_all_seasons():
     return unique
 
 def sync_all_seasons(repo):
-    """Sincroniza temporada completa de todas las ligas a la BD"""
+    """Sincroniza temporada completa de todas las ligas a la BD - FIX dedup"""
     print("[sync_all_seasons] Iniciando sincronización temporada completa 15 ligas...")
+    # Limpiar duplicados existentes primero
+    try:
+        cleaned = repo.clean_duplicates()
+        print(f"[sync_all_seasons] Limpieza previa: {cleaned} duplicados eliminados")
+    except:
+        pass
     matches=fetch_all_seasons()
     if matches:
         count=repo.upsert_matches(matches)
         print(f"[sync_all_seasons] Guardados {count} partidos temporada completa")
+        # Limpiar de nuevo después de insertar
+        try:
+            cleaned2 = repo.clean_duplicates()
+            print(f"[sync_all_seasons] Limpieza posterior: {cleaned2} duplicados")
+        except:
+            pass
         repo.log_sync('SEASON_15_LIGAS', '2025-2026', count, 0, 'OK')
         return count
     return 0

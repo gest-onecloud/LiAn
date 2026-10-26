@@ -273,6 +273,14 @@ function getFiltered(){
   } else if(f==='analytics'){
     filtered=allMatches;
   }
+  // FIX DEDUP final antes de devolver
+  const seenFinal={};
+  filtered = filtered.filter(m=>{
+    const key = `${m.date||''}_${(m.league_code||'').toLowerCase()}_${(m.home||'').toLowerCase()}_${(m.away||'').toLowerCase()}`;
+    if(seenFinal[key]) return false;
+    seenFinal[key]=true;
+    return true;
+  });
   return filtered;
 }
 
@@ -436,10 +444,26 @@ async function loadSeasonLeague(leagueCode){
     const data=await api(`/api/calendar/season/league?league=${leagueCode}&limit=500`);
     // Si estamos en vista de liga, reemplazar solo los de esa liga o merge?
     // Merge con allMatches para no perder otras ligas
-    const nuevos = data.matches||[];
-    // Actualizar allMatches: quitar viejos de esa liga y agregar nuevos
-    const otros = allMatches.filter(m=> (m.league_code||'')!==leagueCode);
+    let nuevos = data.matches||[];
+    // FIX DEDUP FRONTEND: eliminar duplicados por fecha+liga+equipos
+    const seenF = {};
+    nuevos = nuevos.filter(m=>{
+      const key = `${m.date||''}_${(m.league_code||'').toLowerCase()}_${(m.home||'').toLowerCase()}_${(m.away||'').toLowerCase()}`;
+      if(seenF[key]) return false;
+      seenF[key]=true;
+      return true;
+    });
+    // Actualizar allMatches: quitar viejos de esa liga y agregar nuevos sin duplicar
+    const otros = allMatches.filter(m=> (m.league_code||'').toLowerCase()!==leagueCode.toLowerCase());
     allMatches = [...otros, ...nuevos];
+    // Dedup global final
+    const seenG={};
+    allMatches = allMatches.filter(m=>{
+      const key = `${m.date||''}_${(m.league_code||'').toLowerCase()}_${(m.home||'').toLowerCase()}_${(m.away||'').toLowerCase()}`;
+      if(seenG[key]) return false;
+      seenG[key]=true;
+      return true;
+    });
     allMatches.sort((a,b)=>{
       const da = (a.date||'') + ' ' + (a.time||'');
       const db = (b.date||'') + ' ' + (b.time||'');
