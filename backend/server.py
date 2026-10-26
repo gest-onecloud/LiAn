@@ -17,7 +17,14 @@ else:
     REPO_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 from backend.data.repo import Repo
-from backend.services import fixture_sync, calendar as cal_service, progol_sync
+try:
+    from backend.services import fixture_sync, calendar as cal_service
+    from backend.services import progol_sync
+except ImportError:
+    import backend.services.fixture_sync as fixture_sync
+    import backend.services.calendar as cal_service
+    import backend.services.progol_sync as progol_sync
+
 from backend.core.model import Model
 
 repo = Repo(str(REPO_PATH))
