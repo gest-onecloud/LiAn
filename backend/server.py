@@ -270,6 +270,70 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps({"date":date,"matches":payload,"count":len(payload)}).encode())
                 return
+
+        if parsed.path == "/api/liga-mx/sync":
+            # Sincroniza SOLO Liga MX temporada completa - rapido
+            def bg_mx():
+                try:
+                    from backend.services.fixture_sync import fetch_season_for_liga
+                    matches = fetch_season_for_liga("mex.1", "Liga MX - Mexico")
+                    if matches:
+                        c = repo.upsert_matches(matches)
+                        print(f"[Liga MX Sync] {len(matches)} partidos, guardados {c}")
+                    else:
+                        # Fallback: intentar endpoint directo temporada
+                        from backend.services.fixture_sync import get_json
+                        url = "https://site.api.espn.com/apis/site/v2/sports/soccer/mex.1/scoreboard"
+                        raw = get_json(url, timeout=10)
+                        if raw and raw.get('events'):
+                            from backend.services.fixture_sync import _parse_espn
+                            ms = _parse_espn(datetime.now().strftime('%Y-%m-%d'), raw, "mex.1", "Liga MX")
+                            if ms:
+                                c = repo.upsert_matches(ms)
+                                print(f"[Liga MX Sync fallback] {c} partidos")
+                except Exception as e:
+                    print(f"[Liga MX Sync error] {e}")
+            threading.Thread(target=bg_mx, daemon=True).start()
+            self.send_response(200)
+            self.send_header("Content-Type","application/json")
+            _cors(self)
+            self.end_headers()
+            self.wfile.write(json.dumps({"status":"sync_liga_mx_iniciada","message":"Sincronizando SOLO Liga MX temporada completa, 60-90 seg, luego /api/liga-mx/season"}).encode())
+            return
+        if parsed.path == "/api/liga-mx/season":
+            limit = int(qs.get('limit',['200'])[0])
+            matches = repo.get_by_league("mex.1", limit=limit)
+            if not matches:
+                matches = repo.get_by_league_name("Liga MX", limit=limit)
+                if not matches:
+                    matches = repo.get_by_league_name("mex.1", limit=limit)
+            payload = []
+            for m in matches:
+                pred = model.predictions_for(m, fast=False)
+                payload.append(pred)
+            self.send_response(200)
+            self.send_header("Content-Type","application/json")
+            _cors(self)
+            self.end_headers()
+            self.wfile.write(json.dumps({"league":"mex.1","matches":payload,"count":len(payload),"source":"Liga MX Temporada Completa - Mexico"}).encode())
+            return
+        if parsed.path == "/api/liga-mx/fast":
+            date = qs.get('date',[datetime.now().strftime('%Y-%m-%d')])[0]
+            # Buscar Liga MX de esa fecha, pero si no hay, buscar temporada
+            matches = [m for m in repo.get_by_league("mex.1", limit=500) if m['date']==date]
+            if not matches:
+                # intentar del dia
+                from backend.services import calendar as cal_service
+                all_day = cal_service.get_calendar_for_date(repo, date)
+                matches = [m for m in all_day if 'mex' in (m.get('league_code','').lower()) or 'liga mx' in (m.get('league','').lower()) or 'mexico' in (m.get('league','').lower())]
+            payload = [model.predictions_for(m, fast=False) for m in matches]
+            self.send_response(200)
+            self.send_header("Content-Type","application/json")
+            _cors(self)
+            self.end_headers()
+            self.wfile.write(json.dumps({"date":date,"league":"mex.1","matches":payload,"count":len(payload),"source":"Liga MX - Solo Mexico"}).encode())
+            return
+
         self.send_response(404)
         _cors(self)
         self.end_headers()

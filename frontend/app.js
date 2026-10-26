@@ -15,7 +15,7 @@ let customCombinada = [];
 let _lastTopAlta = [];
 let _lastTopMedia = [];
 
-let PROGOL_REAL = [
+var PROGOL_REAL = [
 
   {n:1, home:'PUEBLA', away:'PUMAS'},
   {n:2, home:'PACHUCA', away:'TIGRES'},
@@ -126,14 +126,37 @@ function renderAnalyticsExtended(matches){
   return `<div class="analytics-panel"><div class="analytics-grid"><div class="analytics-card"><div class="analytics-title">⚽ Estado</div><div class="analytics-value">🔴 ${enJuego.length} En Juego | ⏰ ${programados.length} Programados | ✅ ${finalizados.length} Finalizados</div></div><div class="analytics-card"><div class="analytics-title">🎯 Acierto Global</div><div class="analytics-value" style="font-size:22px">${pct}% - ${aciertos}✅ / ${fallos}❌ de ${finalizados.length}</div></div><div class="analytics-card wide"><div class="analytics-title">📊 Detalle por confianza</div><div class="conf-analytics" style="gap:10px"><div class="conf-detail"><div class="conf-row alta"><span class="conf-dot" style="background:#1ee07a"></span><b>Alta:</b> ${cs.Alta.total} → ${cs.Alta.aciertos}✅ / ${cs.Alta.fallos}❌ - ${cs.Alta.total>0?Math.round(cs.Alta.aciertos/cs.Alta.total*100):0}%</div></div><div class="conf-detail"><div class="conf-row media"><span class="conf-dot" style="background:#f5d547"></span><b>Media:</b> ${cs.Media.total} → ${cs.Media.aciertos}✅ / ${cs.Media.fallos}❌ - ${cs.Media.total>0?Math.round(cs.Media.aciertos/cs.Media.total*100):0}%</div></div><div class="conf-detail"><div class="conf-row limitada"><span class="conf-dot" style="background:#ff6b6b"></span><b>Limitada:</b> ${cs.Limitada.total} → ${cs.Limitada.aciertos}✅ / ${cs.Limitada.fallos}❌ - ${cs.Limitada.total>0?Math.round(cs.Limitada.aciertos/cs.Limitada.total*100):0}%</div></div></div></div><div class="analytics-card wide"><div class="analytics-title">📈 Resumen por liga</div><div class="liga-table">${Object.entries(a.porLiga).map(([liga,data])=>`<div class="liga-row"><span>${liga}</span><span>${data.aciertos}✅ ${data.fallos}❌ (${data.total})</span><span class="pct ${data.aciertos>=data.fallos?'ok':'err'}">${data.total>0?Math.round(data.aciertos/data.total*100):0}%</span></div>`).join('')}</div></div></div></div>`;
 }
 function findMatchForProgol(home, away){
-  const nh = (home||'').toLowerCase();
-  const na = (away||'').toLowerCase();
-  // buscar por contenido
-  return allMatches.find(m=>{
+  const nh = (home||'').toLowerCase().trim();
+  const na = (away||'').toLowerCase().trim();
+  const sources = [...allMatches, ...SEASON_CACHE];
+  // Normaliza nombres para TuLotero: PUMAS -> Pumas UNAM, AGUILAS -> America, etc.
+  const aliases = {
+    'puebla':'puebla','pumas':'pumas','pachuca':'pachuca','tigres':'tigres','aguilas':'america','america':'america','toluca':'toluca',
+    'elche':'elche','valencia':'valencia','ath. bilbao':'athletic','athletic':'athletic','bilbao':'athletic','r. sociedad':'real sociedad','real sociedad':'real sociedad',
+    'bournemouth':'bournemouth','leeds':'leeds','liverpool':'liverpool','arsenal':'arsenal','milan':'milan','inter milan':'inter','inter':'inter',
+    'juventus':'juventus','napoles':'napoli','napoli':'napoli','augsburgo':'augsburg','augsburg':'augsburg','friburgo':'freiburg','freiburg':'freiburg',
+    'lorient':'lorient','brest':'brest','gremio':'gremio','at. mineiro':'atletico mineiro','atletico mineiro':'atletico mineiro','mineiro':'atletico mineiro',
+    'boca jrs':'boca juniors','boca juniors':'boca juniors','river plate':'river plate','u. catolica':'universidad catolica','universidad catolica':'universidad catolica','u. de chile':'universidad de chile','universidad de chile':'universidad de chile',
+    'monterrey':'monterrey','tijuana':'tijuana','guadalajara':'guadalajara','atlante':'atlante','s. laguna':'santos laguna','santos laguna':'santos laguna','necaxa':'necaxa','c. azul':'cruz azul','cruz azul':'cruz azul','leon':'leon',
+    'getafe':'getafe','sevilla':'sevilla','chelsea':'chelsea','man. united':'manchester united','manchester united':'manchester united','ajax':'ajax','az alkmaar':'az','az':'az'
+  };
+  const normHome = aliases[nh]||nh;
+  const normAway = aliases[na]||na;
+  // 1er intento: match exacto difuso
+  let found = sources.find(m=>{
     const h=(m.home||'').toLowerCase();
     const a=(m.away||'').toLowerCase();
-    return (h.includes(nh.slice(0,4)) || nh.includes(h.slice(0,4))) && (a.includes(na.slice(0,4)) || na.includes(a.slice(0,4)));
+    return (h.includes(normHome) || normHome.includes(h) || h.includes(nh) || nh.includes(h.slice(0,5))) && 
+           (a.includes(normAway) || normAway.includes(a) || a.includes(na) || na.includes(a.slice(0,5)));
   });
+  if(found) return found;
+  // 2do intento: solo home o away
+  found = sources.find(m=>{
+    const h=(m.home||'').toLowerCase();
+    const a=(m.away||'').toLowerCase();
+    return (h.includes(normHome) && a.includes(normAway.slice(0,3))) || (a.includes(normAway) && h.includes(normHome.slice(0,3)));
+  });
+  return found||null;
 }
 function cardA(m){
   const p=m.probabilities||{"1":0,"X":0,"2":0};
@@ -182,7 +205,10 @@ function groupByEstado(matches){ const enJuego=matches.filter(m=>m.estado==='EN_
 function renderSection(title,matches){ if(matches.length===0) return ''; let html=''; if(title.includes('Finalizados')){ const aciertos=matches.filter(m=>m.acierto===true).length, fallos=matches.filter(m=>m.acierto===false).length; html+=`<div class="section-title finalizados-header"><span>${title}</span><div class="filter-mini"><button class="mini-filter acierto" onclick="setFilterAciertos()">✅ Aciertos (${aciertos})</button><button class="mini-filter fallo" onclick="setFilterFallos()">❌ Fallos (${fallos})</button></div></div>`; } else { html+=`<div class="section-title">${title}</div>`; } const order={Alta:0,Media:1,Limitada:2}; const sorted=[...matches].sort((a,b)=>{const ca=order[a.confidence]??2,cb=order[b.confidence]??2; if(ca!==cb) return ca-cb; return (b.date||'').localeCompare(a.date||'');}); html+=sorted.map(cardA).join(''); return html; }
 function resetToAll(){ document.querySelectorAll('.menu-item').forEach(b=>b.classList.remove('active')); const btn=document.querySelector('[data-filter="all"]'); if(btn) btn.classList.add('active'); currentFilter='all'; renderAll(); }
 function renderProgolReal(){
-  let html=`<div class="section-title">▤ Progol - Quiniela Lotería Nacional ${PROGOL_META.fecha||'30 oct.'} ${PROGOL_META.hasta? 'hasta '+PROGOL_META.hasta:''} (14 + Revancha 7) - ${PROGOL_META.fuente||'Como TuLotero'} - Auto</div>`;
+  var metaF = (typeof PROGOL_META!=='undefined' && PROGOL_META.fecha) ? PROGOL_META.fecha : '30 oct.';
+  var metaH = (typeof PROGOL_META!=='undefined' && PROGOL_META.hasta) ? 'hasta '+PROGOL_META.hasta : '';
+  var metaSrc = (typeof PROGOL_META!=='undefined' && PROGOL_META.fuente) ? PROGOL_META.fuente : 'TuLotero';
+  let html='<div class="section-title">▤ Progol - Quiniela Lotería Nacional '+metaF+' '+metaH+' (14 + Revancha 7) - '+metaSrc+' - Auto</div>';
   html+=`<div class="analytics-panel"><div class="analytics-card wide" style="background:#0a1a2e; border:2px solid #d4af37"><div class="analytics-title">🎫 Boleta Progol Oficial - L/E/V | LiAn sugiere con prob</div><div class="analytics-value" style="font-size:13px">Marca L=Local, E=Empate, V=Visitante. LiAn usa Poisson 58% + ELO 16% + Forma 10% + MonteCarlo 16% para sugerir. Dobles/Triples aumentan chance. Revancha opcional 7 partidos.</div></div></div>`;
   
   function renderProgolList(list, titulo){
@@ -319,6 +345,42 @@ function renderAll(){
 }
 function setFilterAciertos(){ document.querySelectorAll('.menu-item').forEach(b=>b.classList.remove('active')); const btn=document.querySelector('[data-filter="aciertos"]'); if(btn) btn.classList.add('active'); currentFilter='aciertos'; renderAll(); }
 function setFilterFallos(){ document.querySelectorAll('.menu-item').forEach(b=>b.classList.remove('active')); const btn=document.querySelector('[data-filter="fallos"]'); if(btn) btn.classList.add('active'); currentFilter='fallos'; renderAll(); }
+
+async function loadLigaMXOnly(){
+  try{
+    $status.textContent='Cargando SOLO Liga MX temporada completa...';
+    const data = await api('/api/liga-mx/season?limit=300');
+    if(data && data.matches && data.matches.length>0){
+      allMatches = data.matches;
+      log(`Liga MX cargada: ${data.matches.length} partidos temporada`, 'ok');
+      currentFilter='liga-mx';
+      document.querySelectorAll('.menu-item').forEach(b=>b.classList.remove('active'));
+      const btn=document.querySelector('[data-filter="liga-mx"]');
+      if(btn) btn.classList.add('active');
+      renderAll();
+      $status.textContent=`${data.count} partidos Liga MX temporada - ${data.source}`;
+    } else {
+      $status.textContent='No hay Liga MX, sincronizando...';
+      await api('/api/liga-mx/sync');
+      setTimeout(loadLigaMXOnly, 8000);
+    }
+  }catch(e){
+    $status.textContent=`Error Liga MX: ${e.message}`;
+    log(`Error Liga MX: ${e.message}`, 'err');
+  }
+}
+
+async function syncLigaMX(){
+  $status.textContent='Sincronizando SOLO Liga MX... 60-90 seg';
+  try{
+    await api('/api/liga-mx/sync');
+    log('Sync Liga MX iniciado', 'ok');
+    setTimeout(loadLigaMXOnly, 10000);
+  }catch(e){
+    $status.textContent=`Error sync Liga MX: ${e.message}`;
+  }
+}
+
 async function loadFast(){
   const date=$dateInput.value||new Date().toLocaleDateString('en-CA');
   if(!date){ $dateInput.value=new Date().toLocaleDateString('en-CA'); }
@@ -339,9 +401,9 @@ async function loadFast(){
   }catch(e){ $status.textContent=`Error: ${e.message}`; }
 }
 async function refresh(){ const date=$dateInput.value||new Date().toLocaleDateString('en-CA'); $status.textContent=`Sincronizando ${date}...`; try{ await api(`/api/calendar?refresh=1&date=${date}`); setTimeout(loadFast,3000); }catch(e){ $status.textContent=`Error sync: ${e.message}`; } }
-document.addEventListener('click',(e)=>{ const btn=e.target.closest('.menu-item'); if(!btn) return; if(!btn.dataset.filter) return; document.querySelectorAll('.menu-item').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); currentFilter=btn.dataset.filter; if(currentFilter==='search') $searchBox.style.display='block'; else $searchBox.style.display='none'; renderAll(); if(window.innerWidth<800) document.querySelector('.main').scrollTop=0; });
+document.addEventListener('click',(e)=>{ const btn=e.target.closest('.menu-item'); if(!btn) return; if(!btn.dataset.filter) return; document.querySelectorAll('.menu-item').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); currentFilter=btn.dataset.filter; if(currentFilter==='search') $searchBox.style.display='block'; else $searchBox.style.display='none'; if(currentFilter==='liga-mx'){ loadLigaMXOnly(); return; } renderAll(); if(window.innerWidth<800) document.querySelector('.main').scrollTop=0; });
 $searchInput.addEventListener('input',renderAll);
 $leagueSelect.addEventListener('change',renderAll);
 document.getElementById('loadBtn').addEventListener('click',loadFast);
 document.getElementById('refreshBtn').addEventListener('click',refresh);
-(async()=>{ $dateInput.value=new Date().toLocaleDateString('en-CA'); try{ const h=await api('/api/health'); $status.textContent=`API: ${h.version} - ${h.records} partidos`; loadFast(); loadProgolFromBackend(); }catch{ $status.textContent='API no conecta.'; } })();
+(async()=>{ $dateInput.value=new Date().toLocaleDateString('en-CA'); try{ const h=await api('/api/health'); $status.textContent=`API: ${h.version} - ${h.records} partidos`; loadFast(); loadProgolFromBackend(); setTimeout(loadSeasonForProgol, 2000); }catch{ $status.textContent='API no conecta.'; } })();
