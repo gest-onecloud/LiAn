@@ -45,42 +45,62 @@ function setSearch(term){
   renderAll();
 }
 
+
 function getEstadoIcon(estado){
   if(estado==='FINALIZADO') return '✅';
   if(estado==='EN_JUEGO') return '🔴';
   return '⏰';
 }
-function getEstadoLabel(estado){
-  if(estado==='FINALIZADO') return 'Finalizado';
-  if(estado==='EN_JUEGO') return 'En Juego';
-  return 'Programado';
+function getEstadoLabel(estado, acierto){
+  // Si es finalizado, mostrar solo Acertó/Falló en lugar de Finalizado (menos redundante)
+  if(estado==='FINALIZADO'){
+    if(acierto===true) return '✅ Acertó';
+    if(acierto===false) return '❌ Falló';
+    return 'Finalizado';
+  }
+  if(estado==='EN_JUEGO') return '🔴 En Juego';
+  return '⏰ Programado';
 }
 
 function cardA(m){
   const p = m.probabilities || {"1":0,"X":0,"2":0};
   const total = (p['1']+p['X']+p['2']).toFixed(1);
-  const confColor = m.confidence==='Alta'?'#1ee07a':m.confidence==='Media'?'#ffcc00':'#ff8a8a';
   const ligaEmoji = m.league_code==='mex.1'?'🇲🇽':m.league_code==='usa.1'?'🇺🇸':m.league_code==='eng.1'?'🏴󠁧󠁢󠁥󠁮󠁧󠁿':m.league_code?.includes('champions')?'🏆':'⚽';
-  const estadoIcon = getEstadoIcon(m.estado||'PROGRAMADO');
-  const estadoLabel = getEstadoLabel(m.estado||'PROGRAMADO');
   
-  // Marcador y acierto
-  let scoreHtml = '';
-  if(m.home_score!==null && m.home_score!==undefined && m.away_score!==null && m.away_score!==undefined){
-    const resultadoReal = m.resultado_real || '?';
-    let aciertoHtml = '';
-    if(m.estado==='FINALIZADO' && m.acierto!==null){
-      aciertoHtml = m.acierto ? '<span class="acierto ok">✅ Acertó</span>' : '<span class="acierto err">❌ Falló</span>';
-    } else if(m.estado==='EN_JUEGO'){
-      aciertoHtml = '<span class="acierto live">🔴 En vivo</span>';
+  // Badge: Si finalizado, mostrar Acertó/Falló directo (no redundante)
+  let estadoIcon = '';
+  let estadoLabel = '';
+  let estadoClass = '';
+  if(m.estado==='FINALIZADO'){
+    if(m.acierto===true){
+      estadoIcon = '✅'; estadoLabel = 'Acertó'; estadoClass = 'estado-acierto';
+    } else if(m.acierto===false){
+      estadoIcon = '❌'; estadoLabel = 'Falló'; estadoClass = 'estado-fallo';
+    } else {
+      estadoIcon = '✅'; estadoLabel = 'Finalizado'; estadoClass = 'estado-finalizado';
     }
-    scoreHtml = `<div class="score-row"><span class="score">${m.home_score} - ${m.away_score}</span><span class="score-detail">Real: ${resultadoReal} ${aciertoHtml}</span></div>`;
+  } else if(m.estado==='EN_JUEGO'){
+    estadoIcon = '🔴'; estadoLabel = 'En Juego'; estadoClass = 'estado-en_juego';
+  } else {
+    estadoIcon = '⏰'; estadoLabel = 'Programado'; estadoClass = 'estado-programado';
+  }
+  
+  // Score: Solo si es FINALIZADO o EN_JUEGO (no en PROGRAMADO)
+  let scoreHtml = '';
+  if(m.estado!=='PROGRAMADO' && m.home_score!==null && m.home_score!==undefined && m.away_score!==null && m.away_score!==undefined){
+    scoreHtml = `<div class="score-row"><span class="score">${m.home_score} - ${m.away_score}</span></div>`;
+  }
+  
+  // Favorito sin xG (ocultar xG para usuario final)
+  let favoritoHtml = '';
+  if(m.favorite){
+    favoritoHtml = `<div class="meta">⭐ Favorito: <b>${esc(m.favorite)}</b></div>`;
   }
   
   return `
-  <div class="card" data-league="${esc(m.league||'')}" data-home="${esc(m.home||'')}" data-away="${esc(m.away||'')}" data-estado="${esc(m.estado||'PROGRAMADO')}">
-    <div class="badge-row"><span class="tag">${ligaEmoji} ${esc(m.league_code||'')}</span><span class="estado-tag estado-${(m.estado||'PROGRAMADO').toLowerCase()}">${estadoIcon} ${estadoLabel}</span></div>
-    <div class="league">${esc(m.league||'Futbol')} • ${esc(m.time||'')} • ${esc(m.date||'')} • ${esc(m.status_detail||m.status||'')}</div>
+  <div class="card" data-league="${esc(m.league||'')}" data-home="${esc(m.home||'')}" data-away="${esc(m.away||'')}" data-estado="${esc(m.estado||'PROGRAMADO')}" data-acierto="${m.acierto===true?'acierto':m.acierto===false?'fallo':''}">
+    <div class="badge-row"><span class="tag">${ligaEmoji} ${esc(m.league_code||'')}</span><span class="estado-tag ${estadoClass}">${estadoIcon} ${estadoLabel}</span></div>
+    <div class="league">${esc(m.league||'Futbol')} • ${esc(m.time||'')} • ${esc(m.date||'')}</div>
     <div class="teams">${esc(m.home)} <span style="color:#8aa0c8">vs</span> ${esc(m.away)}</div>
     ${scoreHtml}
     <div class="prob-row">
@@ -89,14 +109,14 @@ function cardA(m){
       <span class="prob">2: ${p['2']}%</span>
       <span class="total">Σ ${total}%</span>
     </div>
-    <div class="meta">⭐ Favorito: <b>${esc(m.favorite||'')}</b> | xG: ${m.xg_home||0}-${m.xg_away||0}</div>
-    <div class="meta">Conf: <span style="color:${confColor};font-weight:700">${esc(m.confidence||'')}</span> • Ev: ${m.evidence||0} • Riesgo: ${esc(m.risk||'')} • Suf: ${esc(m.sufficiency||'')}</div>
-    <div class="meta" style="font-size:11px;color:#8aa0c8">Fuente: ${esc(m.source||'')} • ${esc(m.status||'')}</div>
-    <details class="explain"><summary>🔍 Explicabilidad (F)</summary><ul>${(m.explicabilidad||[]).map(e=>`<li>${esc(e)}</li>`).join('')}</ul><div class="transp">⚠️ ${esc(m.transparencia||'')}</div></details>
+    ${favoritoHtml}
   </div>`;
 }
 
+
 function getFiltered(){
+  // Filtros nuevos: aciertos y fallos
+
   let filtered = allMatches;
   if(currentFilter==='top'){
     filtered = allMatches.filter(m=>m.confidence==='Alta' || m.confidence==='Media');
@@ -122,6 +142,10 @@ function getFiltered(){
     }
   }else if(currentFilter==='combinada'){
     filtered = allMatches.filter(m=>m.confidence==='Alta' || m.confidence==='Media').slice(0,6);
+  }else if(currentFilter==='aciertos'){
+    filtered = allMatches.filter(m=>m.estado==='FINALIZADO' && m.acierto===true);
+  }else if(currentFilter==='fallos'){
+    filtered = allMatches.filter(m=>m.estado==='FINALIZADO' && m.acierto===false);
   }else if(currentFilter==='progol'){
     filtered = allMatches.slice(0,14);
   }
@@ -286,7 +310,7 @@ function renderAll(){
   }
 
   html += `<div class="section-title">📊 Transparencia</div>`;
-  html += `<div class="card"><div class="meta">Probabilidad != recomendación segura. Suma 1X2 ~100% validado.</div><div class="meta">Fuente: ESPN_MULTI_15LIGAS + Ensemble 58%/16%/10%/16% 6000 sims - Con marcador y acierto</div><div class="meta">Estados: ⏰ Programado • 🔴 En Juego • ✅ Finalizado con marcador</div><div class="meta">Versión: V64.6.0 Paso5.6 Buscador + Marcador + Estados</div></div>`;
+  html += `<div class="card"><div class="meta">Probabilidad != recomendación segura. Suma 1X2 ~100% validado.</div><div class="meta">Fuente: ESPN_MULTI_15LIGAS + Ensemble 58%/16%/10%/16% 6000 sims - Con marcador y acierto</div><div class="meta">Estados: ⏰ Programado • 🔴 En Juego • ✅ Finalizado con marcador</div><div class="meta">Versión: V64.6.0 Paso5.8 UI Limpia Usuario</div></div>`;
 
   $grid.innerHTML = html;
 }

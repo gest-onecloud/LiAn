@@ -157,3 +157,12 @@ body{font-family:Inter,Arial,sans-serif;background:#0b1220;color:#e8eefc;margin:
 .acierto.ok{background:#1e3a1e;color:#1ee07a}
 .acierto.err{background:#3a1e1e;color:#ff8a8a}
 .acierto.live{background:#3a1e1e;color:#ff6b6b;animation:pulse 1s infinite}
+
+/* Paso 5.8 UI Limpia - Aciertos y Fallos */
+.estado-acierto{background:#1e3a1e;color:#1ee07a;border:1px solid #2a5a2a}
+.estado-fallo{background:#3a1e1e;color:#ff6b6b;border:1px solid #5a2a2a}
+.estado-acierto, .estado-fallo{font-weight:800;font-size:11px}
+.card[data-acierto="acierto"]{border-color:#1e3a1e}
+.card[data-acierto="fallo"]{border-color:#3a1e1e;opacity:0.9}
+.score-row{justify-content:center}
+.score{font-size:20px}
