@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Progol Admin - LiAn</title>
+<style>
+body{background:#0a1020;color:#e0e8ff;font-family:system-ui;padding:20px;max-width:800px;margin:0 auto}
+h1{color:#d4af37}
+textarea{width:100%;height:300px;background:#0f1a33;color:#fff;border:1px solid #2a3a5a;border-radius:8px;padding:12px;font-family:monospace;font-size:13px}
+button{background:#d4af37;color:#000;border:none;padding:12px 24px;border-radius:8px;font-weight:900;cursor:pointer;margin:6px}
+button:hover{background:#ffdf50}
+.card{background:#0f1a33;border:1px solid #2a3a5a;border-radius:8px;padding:16px;margin:12px 0}
+code{color:#1ee07a}
+</style>
+</head><body>
+<h1>🎫 Progol Admin - Automatizar siguiente Progol</h1>
+<div class="card">
+<h3>¿Cómo funciona automático?</h3>
+<p>Progol sale <b>2x por semana</b> (miércoles y sábado). Hay 3 formas de automatizar:</p>
+<ol>
+<li><b>Auto-scrape TuLotero (ideal)</b>: Backend cada 12h hace GET a <code>/api/progol/refresh</code> que intenta scrapear web.tulotero.mx. Si cambia, lo guarda en <code>progol_current.json</code> y tu frontend lo carga solo.</li>
+<li><b>Paste manual rápido (hoy)</b>: Copias lista de TuLotero y pegas abajo → Guardar. Tarda 10 seg.</li>
+<li><b>Bot Telegram/WhatsApp</b>: Te mando mensaje cuando sale nuevo Progol y respondes con lista.</li>
+</ol>
+</div>
+
+<div class="card">
+<h3>🚀 Opción 1 - Auto (ya implementado en backend V92)</h3>
+<p>Endpoints nuevos:</p>
+<ul>
+<li><code>GET /api/progol/current</code> → Devuelve Progol actual (14+7)</li>
+<li><code>GET /api/progol/refresh</code> → Intenta scrapear TuLotero y actualiza cache</li>
+<li><code>POST /api/progol/manual</code> → Body {text: "1 PUEBLA vs PUMAS\n2..."}</li>
+</ul>
+<p>Para automatizar en Render:</p>
+<code>
+# En Render cron job cada 12h:
+curl https://lian-zfg8.onrender.com/api/progol/refresh
+</code>
+<p>Y frontend ya carga solo con <code>loadProgolFromBackend()</code> al iniciar.</p>
+</div>
+
+<div class="card">
+<h3>✏️ Opción 2 - Manual rápido (usa esto ahora)</h3>
+<p>Pega la lista de TuLotero tal cual (copia de tu captura):</p>
+<textarea id="progolText" placeholder="Pega aquí:
+1 PUEBLA vs PUMAS
+2 PACHUCA vs TIGRES
+3 AGUILAS vs TOLUCA
+...
+14 U. CATOLICA vs U. DE CHILE
+
+REVANCHA
+1 MONTERREY vs TIJUANA
+..."></textarea>
+<br>
+<button onclick="saveManual()">💾 Guardar Progol nuevo</button>
+<button onclick="loadCurrent()">👁️ Ver Progol actual</button>
+<div id="status"></div>
+</div>
+
+<script>
+const BACKEND = "https://lian-zfg8.onrender.com";
+async function saveManual(){
+  const text = document.getElementById('progolText').value;
+  if(!text){ alert('Pega la lista'); return; }
+  document.getElementById('status').textContent='Guardando...';
+  try{
+    const r = await fetch(BACKEND+'/api/progol/manual', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({text})
+    });
+    const j = await r.json();
+    document.getElementById('status').innerHTML = '<span style="color:#1ee07a">✅ Guardado: '+j.progol.length+' + '+j.revancha.length+' revancha - Fecha: '+j.fecha+'</span><pre>'+JSON.stringify(j,null,2)+'</pre>';
+  }catch(e){
+    document.getElementById('status').textContent='Error: '+e.message;
+  }
+}
+async function loadCurrent(){
+  try{
+    const r = await fetch(BACKEND+'/api/progol/current');
+    const j = await r.json();
+    document.getElementById('status').innerHTML = '<pre>'+JSON.stringify(j,null,2)+'</pre>';
+    // Llenar textarea
+    let txt = j.progol.map(m=> m.n+'. '+m.home+' vs '+m.away).join('\n');
+    txt += '\n\nREVANCHA\n' + j.revancha.map(m=> m.n+'. '+m.home+' vs '+m.away).join('\n');
+    document.getElementById('progolText').value = txt;
+  }catch(e){ document.getElementById('status').textContent='Error: '+e.message; }
+}
+loadCurrent();
+</script>
+</body></html>

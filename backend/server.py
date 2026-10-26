@@ -17,7 +17,7 @@ else:
     REPO_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 from backend.data.repo import Repo
-from backend.services import fixture_sync, calendar as cal_service
+from backend.services import fixture_sync, calendar as cal_service, progol_sync
 from backend.core.model import Model
 
 repo = Repo(str(REPO_PATH))
@@ -167,7 +167,52 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps({"date":date,"matches":payload,"count":len(payload)}).encode())
                 return
+
+        if parsed.path == "/api/progol/current":
+            data = progol_sync.get_cached_progol()
+            self.send_response(200)
+            self.send_header("Content-Type","application/json")
+            _cors(self)
+            self.end_headers()
+            self.wfile.write(json.dumps(data, ensure_ascii=False).encode())
+            return
+        if parsed.path == "/api/progol/refresh":
+            data = progol_sync.fetch_latest_progol()
+            self.send_response(200)
+            self.send_header("Content-Type","application/json")
+            _cors(self)
+            self.end_headers()
+            self.wfile.write(json.dumps(data, ensure_ascii=False).encode())
+            return
+        if parsed.path == "/api/progol/manual":
+            # POST manual progol
+            length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(length).decode() if length>0 else ''
+            try:
+                j = json.loads(body) if body else {}
+                text = j.get('text','')
+                if text:
+                    parsed_prog = progol_sync.parse_manual_input(text)
+                    progol_sync.save_progol(parsed_prog)
+                    self.send_response(200)
+                    self.send_header("Content-Type","application/json")
+                    _cors(self)
+                    self.end_headers()
+                    self.wfile.write(json.dumps(parsed_prog, ensure_ascii=False).encode())
+                    return
+            except Exception as e:
+                self.send_response(400)
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({"error":str(e)}).encode())
+                return
+            self.send_response(400)
+            _cors(self)
+            self.end_headers()
+            self.wfile.write(b'{"error":"need text"}')
+            return
         self.send_response(404)
+
         _cors(self)
         self.end_headers()
         self.wfile.write(b'{"error":"not found"}')
