@@ -347,28 +347,48 @@ function setFilterAciertos(){ document.querySelectorAll('.menu-item').forEach(b=
 function setFilterFallos(){ document.querySelectorAll('.menu-item').forEach(b=>b.classList.remove('active')); const btn=document.querySelector('[data-filter="fallos"]'); if(btn) btn.classList.add('active'); currentFilter='fallos'; renderAll(); }
 
 async function loadLigaMXOnly(){
+  // Intentar hasta 2 veces con delay si Render está dormido
+  for(let attempt=1; attempt<=2; attempt++){
+    try{
+
   try{
     $status.textContent='Cargando SOLO Liga MX temporada completa...';
     const data = await api('/api/liga-mx/season?limit=300');
     if(data && data.matches && data.matches.length>0){
-      allMatches = data.matches;
-      log(`Liga MX cargada: ${data.matches.length} partidos temporada`, 'ok');
-      currentFilter='liga-mx';
-      document.querySelectorAll('.menu-item').forEach(b=>b.classList.remove('active'));
-      const btn=document.querySelector('[data-filter="liga-mx"]');
-      if(btn) btn.classList.add('active');
-      renderAll();
-      $status.textContent=`${data.count} partidos Liga MX temporada - ${data.source}`;
-    } else {
-      $status.textContent='No hay Liga MX, sincronizando...';
-      await api('/api/liga-mx/sync');
-      setTimeout(loadLigaMXOnly, 8000);
+        allMatches = data.matches;
+        log(`Liga MX cargada: ${data.matches.length} partidos temporada`, 'ok');
+        currentFilter='liga-mx';
+        document.querySelectorAll('.menu-item').forEach(b=>b.classList.remove('active'));
+        const btn=document.querySelector('[data-filter="liga-mx"]');
+        if(btn) btn.classList.add('active');
+        renderAll();
+        $status.textContent=`${data.count} partidos Liga MX temporada - ${data.source}`;
+        return;
+      } else {
+        $status.textContent='No hay Liga MX, sincronizando... intento '+attempt;
+        await api('/api/liga-mx/sync');
+        await new Promise(r=>setTimeout(r, 8000));
+      }
+    }catch(e){
+      log(`Error Liga MX intento ${attempt}: ${e.message}`, 'err');
+      if(attempt<2){
+        $status.textContent=`Error Liga MX intento ${attempt}, reintentando...`;
+        await new Promise(r=>setTimeout(r, 3000));
+      } else {
+        $status.textContent=`Error Liga MX: ${e.message} - Intentando temporada general`;
+        try{
+          const allData=await api(`/api/calendar/season?limit=300`);
+          allMatches=allData.matches||[];
+          $status.textContent=`${allMatches.length} partidos temporada general`;
+          renderAll();
+        }catch(e2){
+          $status.textContent=`Error total: ${e.message}`;
+        }
+      }
     }
-  }catch(e){
-    $status.textContent=`Error Liga MX: ${e.message}`;
-    log(`Error Liga MX: ${e.message}`, 'err');
   }
 }
+
 
 async function syncLigaMX(){
   $status.textContent='Sincronizando SOLO Liga MX... 60-90 seg';
@@ -385,20 +405,22 @@ async function loadFast(){
   const date=$dateInput.value||new Date().toLocaleDateString('en-CA');
   if(!date){ $dateInput.value=new Date().toLocaleDateString('en-CA'); }
   const d=$dateInput.value||new Date().toLocaleDateString('en-CA');
-  $status.textContent=`Cargando ${d} - 15 ligas...`;
+  $status.textContent=`Cargando ${d} - intentando Liga MX...`;
   try{
     const data=await api(`/api/calendar/fast?date=${d}`);
     allMatches=data.matches||[];
-    // Si 0 partidos, intentar sin fecha (temporada)
     if(allMatches.length===0){
-      const allData=await api(`/api/calendar/season?limit=200`);
-      allMatches=allData.matches||[];
-      $status.textContent=`${allMatches.length} partidos temporada (no hay para ${d})`;
-    } else {
-      $status.textContent=`${data.count} partidos reales de ${d} - ${data.source||''}`;
+      log(`Fast devolvió 0 para ${d}, cargando Liga MX temporada`, 'err');
+      await loadLigaMXOnly();
+      return;
     }
+    $status.textContent=`${data.count} partidos reales de ${d} - ${data.source||''}`;
     renderAll();
-  }catch(e){ $status.textContent=`Error: ${e.message}`; }
+  }catch(e){ 
+    log(`Fast falló (${e.message}), cargando Liga MX temporada como fallback`, 'err');
+    $status.textContent=`Fast falló, cargando Liga MX...`;
+    await loadLigaMXOnly();
+  }
 }
 async function refresh(){ const date=$dateInput.value||new Date().toLocaleDateString('en-CA'); $status.textContent=`Sincronizando ${date}...`; try{ await api(`/api/calendar?refresh=1&date=${date}`); setTimeout(loadFast,3000); }catch(e){ $status.textContent=`Error sync: ${e.message}`; } }
 document.addEventListener('click',(e)=>{ const btn=e.target.closest('.menu-item'); if(!btn) return; if(!btn.dataset.filter) return; document.querySelectorAll('.menu-item').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); currentFilter=btn.dataset.filter; if(currentFilter==='search') $searchBox.style.display='block'; else $searchBox.style.display='none'; if(currentFilter==='liga-mx'){ loadLigaMXOnly(); return; } renderAll(); if(window.innerWidth<800) document.querySelector('.main').scrollTop=0; });
@@ -406,4 +428,16 @@ $searchInput.addEventListener('input',renderAll);
 $leagueSelect.addEventListener('change',renderAll);
 document.getElementById('loadBtn').addEventListener('click',loadFast);
 document.getElementById('refreshBtn').addEventListener('click',refresh);
-(async()=>{ $dateInput.value=new Date().toLocaleDateString('en-CA'); try{ const h=await api('/api/health'); $status.textContent=`API: ${h.version} - ${h.records} partidos`; loadFast(); loadProgolFromBackend(); setTimeout(loadSeasonForProgol, 2000); }catch{ $status.textContent='API no conecta.'; } })();
+(async()=>{ 
+  $dateInput.value=new Date().toLocaleDateString('en-CA'); 
+  try{ 
+    const h=await api('/api/health'); 
+    $status.textContent=`API: ${h.version} - ${h.records} partidos - Cargando Liga MX`; 
+    // Focus Liga MX - temporada completa, no por fecha
+    await loadLigaMXOnly();
+    loadProgolFromBackend(); 
+  }catch(e){ 
+    $status.textContent='API no conecta: '+e.message; 
+    log('Health error: '+e.message, 'err');
+  } 
+})();

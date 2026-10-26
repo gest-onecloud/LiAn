@@ -305,8 +305,14 @@ class Handler(BaseHTTPRequestHandler):
             matches = repo.get_by_league("mex.1", limit=limit)
             if not matches:
                 matches = repo.get_by_league_name("Liga MX", limit=limit)
-                if not matches:
-                    matches = repo.get_by_league_name("mex.1", limit=limit)
+            if not matches:
+                matches = repo.get_by_league_name("mex", limit=limit)
+            if not matches:
+                matches = repo.get_by_league_name("Mexico", limit=limit)
+            # Si aún no hay, devolver TODOS para no mostrar 0
+            if not matches:
+                print("[Liga MX] No hay mex.1, devolviendo todos como fallback para no mostrar 0")
+                matches = repo.get_all(limit=limit)
             payload = []
             for m in matches:
                 pred = model.predictions_for(m, fast=False)
@@ -315,23 +321,25 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type","application/json")
             _cors(self)
             self.end_headers()
-            self.wfile.write(json.dumps({"league":"mex.1","matches":payload,"count":len(payload),"source":"Liga MX Temporada Completa - Mexico"}).encode())
+            self.wfile.write(json.dumps({"league":"mex.1","matches":payload,"count":len(payload),"source":f"Liga MX + fallback ({len(payload)} partidos) - Mexico" if len(payload)>0 else "Sin datos, sincroniza"}).encode())
             return
         if parsed.path == "/api/liga-mx/fast":
             date = qs.get('date',[datetime.now().strftime('%Y-%m-%d')])[0]
-            # Buscar Liga MX de esa fecha, pero si no hay, buscar temporada
             matches = [m for m in repo.get_by_league("mex.1", limit=500) if m['date']==date]
             if not matches:
-                # intentar del dia
+                matches = repo.get_by_league_name("mex", limit=100)
+            if not matches:
                 from backend.services import calendar as cal_service
                 all_day = cal_service.get_calendar_for_date(repo, date)
-                matches = [m for m in all_day if 'mex' in (m.get('league_code','').lower()) or 'liga mx' in (m.get('league','').lower()) or 'mexico' in (m.get('league','').lower())]
+                matches = all_day
+                if not matches:
+                    matches = repo.get_all(limit=100)
             payload = [model.predictions_for(m, fast=False) for m in matches]
             self.send_response(200)
             self.send_header("Content-Type","application/json")
             _cors(self)
             self.end_headers()
-            self.wfile.write(json.dumps({"date":date,"league":"mex.1","matches":payload,"count":len(payload),"source":"Liga MX - Solo Mexico"}).encode())
+            self.wfile.write(json.dumps({"date":date,"league":"mex.1","matches":payload,"count":len(payload),"source":"Liga MX fast + fallback"}).encode())
             return
 
         self.send_response(404)
