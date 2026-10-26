@@ -1,15 +1,12 @@
-
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import json
 import os
 import threading
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # PASO 4: Soporte para Disco Persistente en Render
-# Si existe env var LIAN_DB_PATH=/var/data/lian.db (Render Disk), usa ese
-# Si no, usa backend/data/lian.db local
 DB_PATH_ENV = os.environ.get("LIAN_DB_PATH", "")
 if DB_PATH_ENV:
     REPO_PATH = Path(DB_PATH_ENV)
@@ -49,10 +46,41 @@ class Handler(BaseHTTPRequestHandler):
                 "ok":True,
                 "records":records,
                 "version":Model.VERSION,
-                "mode":"REAL Poisson Paso4 Persistente",
+                "mode":"REAL Poisson Paso7 Temporada Completa",
                 "db_path": str(REPO_PATH),
                 "disk_persistent": bool(DB_PATH_ENV)
             }).encode())
+            return
+        # PASO 7: Temporada completa - todos los partidos ordenados recientes primero
+        if parsed.path == "/api/calendar/season":
+            limit = int(qs.get('limit',['500'])[0])
+            since = qs.get('since',[None])[0]  # opcional: 2025-08-01
+            matches = repo.get_season(since_date=since, limit=limit)
+            payload = []
+            for m in matches:
+                pred = model.predictions_for(m, fast=False)
+                payload.append(pred)
+            self.send_response(200)
+            self.send_header("Content-Type","application/json")
+            _cors(self)
+            self.end_headers()
+            self.wfile.write(json.dumps({"matches":payload,"count":len(payload),"source":"DB Temporada Completa - recientes primero","dates":repo.get_dates()}).encode())
+            return
+        if parsed.path == "/api/calendar/dates":
+            dates = repo.get_dates()
+            self.send_response(200)
+            self.send_header("Content-Type","application/json")
+            _cors(self)
+            self.end_headers()
+            self.wfile.write(json.dumps({"dates":dates,"count":len(dates)}).encode())
+            return
+        if parsed.path == "/api/calendar/leagues":
+            stats = repo.get_leagues_stats()
+            self.send_response(200)
+            self.send_header("Content-Type","application/json")
+            _cors(self)
+            self.end_headers()
+            self.wfile.write(json.dumps({"leagues":stats,"count":len(stats)}).encode())
             return
         if parsed.path == "/api/calendar/fast":
             date = qs.get('date',[datetime.now().strftime('%Y-%m-%d')])[0]
@@ -70,10 +98,14 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/calendar":
             date = qs.get('date',[datetime.now().strftime('%Y-%m-%d')])[0]
             refresh = qs.get('refresh',['0'])[0]=='1'
+            full = qs.get('full',['0'])[0]=='1'  # Paso7: full season sync
             if refresh:
                 def bg():
                     try:
-                        fixture_sync.sync_for_date(repo, date)
+                        if full:
+                            fixture_sync.sync_season(repo, days_back=90)
+                        else:
+                            fixture_sync.sync_for_date(repo, date)
                     except Exception as e:
                         print(f"[bg_sync error] {e}")
                 threading.Thread(target=bg,daemon=True).start()
@@ -81,7 +113,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header("Content-Type","application/json")
                 _cors(self)
                 self.end_headers()
-                self.wfile.write(json.dumps({"date":date,"status":"sync_started_background","message":"Sincronizando ESPN, recarga en 5s /api/calendar/fast"}).encode())
+                self.wfile.write(json.dumps({"date":date,"status":"sync_started_background","full":full,"message":"Sincronizando ESPN temporada completa, recarga en 10s /api/calendar/season"}).encode())
                 return
             else:
                 matches = cal_service.get_calendar_for_date(repo, date)
@@ -98,23 +130,21 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(b'{"error":"not found"}')
 
 def auto_warmup():
-    """Paso 4: Si BD vacia, sincroniza automaticamente hoy"""
     try:
         c = repo.count_all()
         if c == 0:
             today = datetime.now().strftime('%Y-%m-%d')
-            print(f"[Paso4 Auto-Warmup] BD vacia ({REPO_PATH}), sincronizando {today} automaticamente...")
+            print(f"[Paso7 Auto-Warmup] BD vacia ({REPO_PATH}), sincronizando {today}...")
             fixture_sync.sync_for_date(repo, today)
-            print(f"[Paso4 Auto-Warmup] Listo, ahora records={repo.count_all()}")
+            print(f"[Paso7 Auto-Warmup] Listo, ahora records={repo.count_all()}")
         else:
-            print(f"[Paso4] BD OK con {c} partidos en {REPO_PATH}")
+            print(f"[Paso7] BD OK con {c} partidos en {REPO_PATH}")
     except Exception as e:
-        print(f"[Paso4 Warmup error] {e}")
+        print(f"[Paso7 Warmup error] {e}")
 
 def main():
     port = int(os.environ.get("LIAN_PORT", os.environ.get("PORT", "8000")))
-    print(f"[server] REAL MODE Paso4 Persistente puerto {port} DB {REPO_PATH} {Model.VERSION} Disk={bool(DB_PATH_ENV)}")
-    # Auto-warmup en background para no bloquear inicio
+    print(f"[server] REAL MODE Paso7 Temporada Completa puerto {port} DB {REPO_PATH} {Model.VERSION}")
     threading.Thread(target=auto_warmup, daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     server.serve_forever()

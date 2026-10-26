@@ -166,3 +166,75 @@ body{font-family:Inter,Arial,sans-serif;background:#0b1220;color:#e8eefc;margin:
 .card[data-acierto="fallo"]{border-color:#3a1e1e;opacity:0.9}
 .score-row{justify-content:center}
 .score{font-size:20px}
+
+/* Paso 5.9 - Filtros en encabezado finalizados */
+.finalizados-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.filter-mini{display:flex;gap:6px}
+.mini-filter{padding:4px 10px;border-radius:999px;border:1px solid #2a3a5a;background:#121d36;color:#8ab4ff;font-size:11px;cursor:pointer;font-weight:700}
+.mini-filter.acierto{border-color:#1e3a1e;color:#1ee07a}
+.mini-filter.acierto:hover{background:#1e3a1e;color:#fff}
+.mini-filter.fallo{border-color:#3a1e1e;color:#ff6b6b}
+.mini-filter.fallo:hover{background:#3a1e1e;color:#fff}
+
+/* Paso 5.10 - Conf color junto a Favorito */
+.fav-conf-row{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.conf-badge{padding:2px 8px;border-radius:999px;font-size:10px;font-weight:800;letter-spacing:0.5px}
+.conf-alta{box-shadow:0 0 8px #1ee07a33}
+.conf-media{box-shadow:0 0 8px #f5d54733}
+.conf-limitada{box-shadow:0 0 8px #ff6b6b33}
+
+/* Paso 6.0 - Menú América / Europa Árbol */
+.menu-separator{height:1px;background:#1e2f5a;margin:12px 0}
+.menu-group{margin-bottom:8px;border:1px solid #1e2f5a;border-radius:8px;overflow:hidden;background:#0e172d}
+.menu-group-header{width:100%;background:#121d36;border:none;color:#fff;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-weight:800;font-size:13px;letter-spacing:0.5px}
+.menu-group-header:hover{background:#1a2747}
+.menu-group-content{display:none;flex-direction:column;gap:2px;padding:6px;background:#0e172d}
+.menu-group-content.open{display:flex}
+.country-group{margin-bottom:4px}
+.country-header{width:100%;background:#162040;border:1px solid #1e2f5a;color:#9fb2d6;padding:8px 10px;border-radius:6px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-size:12px;font-weight:700}
+.country-header:hover{background:#1e2f5a;color:#fff}
+.country-content{display:none;flex-direction:column;gap:4px;padding:4px 0 4px 12px;margin-top:4px;border-left:2px solid #1e2f5a}
+.country-content.open{display:flex}
+.menu-item.sub{background:#0e172d;border:1px dashed #2a3a5a;font-size:12px;padding:8px 10px;margin-left:0}
+.menu-item.sub:hover{background:#1a2747;border-style:solid}
+.menu-item.continent{background:#1e3a1e;border:1px solid #2a5a2a;color:#1ee07a;font-size:11px;font-weight:700;text-align:center;justify-content:center;margin-top:4px}
+.menu-item.continent:hover{background:#2a5a2a;color:#fff}
+.arrow{font-size:10px;transition:transform 0.2s}
+
+/* Paso 6.1 - Icons carpeta + Conf bolita */
+.league-icon{width:20px;height:14px;border-radius:2px;vertical-align:middle;margin-right:4px;border:1px solid #2a3a5a}
+.conf-icon{width:12px;height:12px;vertical-align:middle;margin-right:4px}
+.conf-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:4px;box-shadow:0 0 6px currentColor}
+.conf-badge{display:inline-flex;align-items:center;gap:2px;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:800;letter-spacing:0.5px}
+.empty-state{grid-column:1/-1;background:#0e172d;border:1px dashed #2a3a5a;border-radius:16px;padding:40px;text-align:center}
+.empty-icon{font-size:48px;margin-bottom:12px}
+.empty-state h3{margin:0 0 8px 0;color:#fff}
+.empty-state p{color:#8aa0c8;margin:0 0 16px 0}
+.empty-state button{padding:10px 20px;border-radius:8px;border:1px solid #3a6ab5;background:#1e3a5f;color:#fff;cursor:pointer;font-weight:700}
+.empty-state button:hover{background:#2a4a7a}
+
+/* Paso 6.4 - Analytics panel */
+.analytics-panel{grid-column:1/-1;margin-bottom:16px}
+.analytics-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.analytics-card{background:#121d36;border:1px solid #22325a;border-radius:12px;padding:14px}
+.analytics-card.wide{grid-column:1/-1}
+.analytics-title{font-size:12px;color:#8aa0c8;font-weight:700;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px}
+.analytics-value{font-size:14px;font-weight:800;color:#fff;margin-bottom:8px}
+.analytics-bar{height:6px;background:#0e172d;border-radius:999px;overflow:hidden}
+.bar-fill{height:100%;border-radius:999px;transition:width 0.3s}
+.bar-fill.acierto{background:#1ee07a}
+.bar-fill.fallo{background:#ff6b6b}
+.conf-analytics{display:flex;flex-direction:column;gap:6px}
+.conf-row{font-size:13px;background:#0e172d;padding:8px 10px;border-radius:8px;display:flex;align-items:center;gap:8px}
+.conf-row.alta{border-left:3px solid #1ee07a}
+.conf-row.media{border-left:3px solid #f5d547}
+.conf-row.limitada{border-left:3px solid #ff6b6b}
+.liga-table{display:flex;flex-direction:column;gap:4px}
+.liga-row{display:flex;justify-content:space-between;align-items:center;background:#0e172d;padding:6px 10px;border-radius:6px;font-size:12px}
+.liga-row .pct.ok{color:#1ee07a;font-weight:800}
+.liga-row .pct.err{color:#ff6b6b;font-weight:800}
+@media(max-width:800px){.analytics-grid{grid-template-columns:1fr}}
+
+.conf-detail{margin-bottom:8px}
+.conf-bar{height:5px;background:#0a1123;border-radius:999px;margin-top:4px;overflow:hidden}
+.conf-bar .bar-fill{height:100%;border-radius:999px}

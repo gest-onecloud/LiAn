@@ -338,6 +338,41 @@ def fetch_from_internet(requested_date: str):
     _cache = {"date": requested_date, "data": unique, "ts": now}
     return unique
 
+
+def sync_season(repo, days_back=90):
+    from datetime import date as date_obj, timedelta
+    print(f"[fixture_sync] PASO 7 - Sincronizando temporada completa últimos {days_back} días")
+    today = date_obj.today()
+    total_synced = 0
+    for i in range(days_back):
+        d = today - timedelta(days=i)
+        date_str = d.isoformat()
+        try:
+            print(f"[fixture_sync] Temporada día {i+1}/{days_back} -> {date_str}")
+            matches = fetch_from_internet(date_str)
+            if matches:
+                count = repo.upsert_matches(matches)
+                total_synced += count
+                print(f"[fixture_sync] {date_str} -> {count} partidos")
+        except Exception as e:
+            print(f"[fixture_sync] Error {date_str}: {e}")
+            continue
+    print(f"[fixture_sync] Temporada completa: {total_synced} partidos sincronizados")
+    return total_synced
+
+def sync_range(repo, start_date, end_date):
+    from datetime import datetime, timedelta
+    try:
+        s = datetime.fromisoformat(start_date).date()
+        e = datetime.fromisoformat(end_date).date()
+        delta = (e - s).days
+        for i in range(delta+1):
+            d = s + timedelta(days=i)
+            sync_for_date(repo, d.isoformat())
+    except Exception as ex:
+        print(f"[sync_range error] {ex}")
+
+
 def sync_for_date(repo, date_str):
     start = time.time()
     try:

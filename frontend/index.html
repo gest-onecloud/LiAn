@@ -1,28 +1,146 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LiAn V64.6.0 - Multi-Liga Mundial</title>
-<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="style.css?v=72">
 </head>
 <body>
 <div class="layout">
   <aside class="sidebar">
     <div class="logo">LiAn <span>V64.6.0</span><br><small>REAL - MULTI-LIGA</small></div>
     <nav class="menu">
+      <!-- ORDEN NUEVO COMO CAPTURA v68 -->
+      <button class="menu-item" data-filter="search">🔍 Buscar</button>
       <button class="menu-item active" data-filter="all">⊙ Partidos del día</button>
       <button class="menu-item" data-filter="top">★ Top Picks</button>
       <button class="menu-item" data-filter="combinada">∽ Combinadas</button>
       <button class="menu-item" data-filter="progol">▤ Progol</button>
-      <button class="menu-item" data-filter="liga-mx">🇲🇽 Liga MX</button>
-      <button class="menu-item" data-filter="mls">🇺🇸 MLS</button>
-      <button class="menu-item" data-filter="champions">🏆 Champions</button>
-      <button class="menu-item" data-filter="europa">🏅 Europa Top5</button>
+
+      <div class="menu-separator"></div>
+
+      <!-- AMERICA -->
+      <div class="menu-group">
+        <button class="menu-group-header" onclick="toggleGroup('america')">
+          <span>🌎 AMÉRICA</span>
+          <span class="arrow" id="arrow-america">▶</span>
+        </button>
+        <div class="menu-group-content" id="group-america">
+          <div class="country-group">
+            <button class="country-header" onclick="toggleCountry('mx')">
+              <span>🇲🇽 México</span>
+              <span class="arrow" id="arrow-mx">▶</span>
+            </button>
+            <div class="country-content" id="country-mx">
+              <button class="menu-item sub" data-filter="league:mex.1">Liga MX</button>
+            </div>
+          </div>
+          <div class="country-group">
+            <button class="country-header" onclick="toggleCountry('usa')">
+              <span>🇺🇸 USA</span>
+              <span class="arrow" id="arrow-usa">▶</span>
+            </button>
+            <div class="country-content" id="country-usa">
+              <button class="menu-item sub" data-filter="league:usa.1">MLS</button>
+              <button class="menu-item sub" data-filter="league:concacaf.champions">Concachampions</button>
+            </div>
+          </div>
+          <div class="country-group">
+            <button class="country-header" onclick="toggleCountry('br')">
+              <span>🇧🇷 Brasil</span>
+              <span class="arrow" id="arrow-br">▶</span>
+            </button>
+            <div class="country-content" id="country-br">
+              <button class="menu-item sub" data-filter="league:bra.1">Brasileirão</button>
+            </div>
+          </div>
+          <div class="country-group">
+            <button class="country-header" onclick="toggleCountry('ar')">
+              <span>🇦🇷 Argentina</span>
+              <span class="arrow" id="arrow-ar">▶</span>
+            </button>
+            <div class="country-content" id="country-ar">
+              <button class="menu-item sub" data-filter="league:arg.1">Liga Argentina</button>
+            </div>
+          </div>
+          <button class="menu-item continent" data-filter="continent:america">Ver todo América</button>
+        </div>
+      </div>
+
+      <!-- EUROPA -->
+      <div class="menu-group">
+        <button class="menu-group-header" onclick="toggleGroup('europa')">
+          <span>🌍 EUROPA</span>
+          <span class="arrow" id="arrow-europa">▶</span>
+        </button>
+        <div class="menu-group-content" id="group-europa">
+          <div class="country-group">
+            <button class="country-header" onclick="toggleCountry('eng')">
+              <span>🏴󠁧󠁢󠁥󠁮󠁧󠁿 Inglaterra</span>
+              <span class="arrow" id="arrow-eng">▶</span>
+            </button>
+            <div class="country-content" id="country-eng">
+              <button class="menu-item sub" data-filter="league:eng.1">Premier League</button>
+              <button class="menu-item sub" data-filter="league:eng.fa">FA Cup</button>
+            </div>
+          </div>
+          <div class="country-group">
+            <button class="country-header" onclick="toggleCountry('esp')">
+              <span>🇪🇸 España</span>
+              <span class="arrow" id="arrow-esp">▶</span>
+            </button>
+            <div class="country-content" id="country-esp">
+              <button class="menu-item sub" data-filter="league:esp.1">La Liga</button>
+            </div>
+          </div>
+          <div class="country-group">
+            <button class="country-header" onclick="toggleCountry('ita')">
+              <span>🇮🇹 Italia</span>
+              <span class="arrow" id="arrow-ita">▶</span>
+            </button>
+            <div class="country-content" id="country-ita">
+              <button class="menu-item sub" data-filter="league:ita.1">Serie A</button>
+            </div>
+          </div>
+          <div class="country-group">
+            <button class="country-header" onclick="toggleCountry('ger')">
+              <span>🇩🇪 Alemania</span>
+              <span class="arrow" id="arrow-ger">▶</span>
+            </button>
+            <div class="country-content" id="country-ger">
+              <button class="menu-item sub" data-filter="league:ger.1">Bundesliga</button>
+            </div>
+          </div>
+          <div class="country-group">
+            <button class="country-header" onclick="toggleCountry('fra')">
+              <span>🇫🇷 Francia</span>
+              <span class="arrow" id="arrow-fra">▶</span>
+            </button>
+            <div class="country-content" id="country-fra">
+              <button class="menu-item sub" data-filter="league:fra.1">Ligue 1</button>
+            </div>
+          </div>
+          <div class="country-group">
+            <button class="country-header" onclick="toggleCountry('uefa')">
+              <span>🏆 UEFA</span>
+              <span class="arrow" id="arrow-uefa">▶</span>
+            </button>
+            <div class="country-content" id="country-uefa">
+              <button class="menu-item sub" data-filter="league:uefa.champions">Champions League</button>
+              <button class="menu-item sub" data-filter="league:uefa.europa">Europa League</button>
+              <button class="menu-item sub" data-filter="league:uefa.europa.conf">Conference</button>
+            </div>
+          </div>
+          <button class="menu-item continent" data-filter="continent:europa">Ver todo Europa</button>
+        </div>
+      </div>
+
+      <div class="menu-separator"></div>
+
+      <button class="menu-item" data-filter="analytics">📊 Estadísticas</button>
       <button class="menu-item" data-filter="aciertos">✅ Aciertos</button>
-    <button class="menu-item" data-filter="fallos">❌ Fallos</button>
-    <button class="menu-item" data-filter="search">🔍 Buscar</button>
+      <button class="menu-item" data-filter="fallos">❌ Fallos</button>
     </nav>
     <div class="sidebar-footer">
       <div class="search-box" id="searchBox" style="display:none">
@@ -39,20 +157,44 @@
         </select>
       </div>
       <div class="status" id="status">Cargando...</div>
-      <div class="version">Ensemble 58% Poisson / 16% ELO / 10% Forma / 16% MC6000<br>Prob != recomendación</div>
+      <div class="version">Ensemble 58% Poisson / 16% ELO / 10% Forma / 16% MC6000<br>Prob != recomendación<br>V64.6.0 Paso7 SOLO Analytics - sin tarjetas</div>
     </div>
   </aside>
   <main class="main">
     <div class="top-bar">
       <input type="date" id="dateInput">
-      <button id="loadBtn">Cargar partidos reales</button>
-      <button id="refreshBtn" class="primary">Sincronizar con ESPN (15 ligas)</button>
+      <button id="loadBtn">Cargar temporada</button>
+      <button id="refreshBtn" class="primary">Sincronizar temporada (90 días)</button>
       <span class="badge" id="countBadge">0 partidos</span>
     </div>
     <div class="grid" id="grid"></div>
     <div class="log" id="log"></div>
   </main>
 </div>
-<script src="app.js?v=5"></script>
+<script>
+function toggleGroup(id){
+  const el=document.getElementById('group-'+id);
+  const arrow=document.getElementById('arrow-'+id);
+  if(el.classList.contains('open')){
+    el.classList.remove('open');
+    arrow.textContent='▶';
+  } else {
+    el.classList.add('open');
+    arrow.textContent='▼';
+  }
+}
+function toggleCountry(id){
+  const el=document.getElementById('country-'+id);
+  const arrow=document.getElementById('arrow-'+id);
+  if(el.classList.contains('open')){
+    el.classList.remove('open');
+    arrow.textContent='▶';
+  } else {
+    el.classList.add('open');
+    arrow.textContent='▼';
+  }
+}
+</script>
+<script src="app.js?v=72"></script>
 </body>
 </html>

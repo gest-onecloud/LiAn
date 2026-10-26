@@ -155,6 +155,30 @@ class Repo:
             print(f"[repo] delete_by_date error: {e}")
             return 0
 
+
+    def get_all(self, limit=1000):
+        cur = self.conn.cursor()
+        cur.execute("SELECT * FROM matches ORDER BY date DESC, time DESC LIMIT ?", (limit,))
+        return [dict(r) for r in cur.fetchall()]
+
+    def get_season(self, since_date=None, limit=1000):
+        cur = self.conn.cursor()
+        if since_date:
+            cur.execute("SELECT * FROM matches WHERE date >= ? ORDER BY date DESC, time DESC LIMIT ?", (since_date, limit))
+        else:
+            cur.execute("SELECT * FROM matches ORDER BY date DESC, time DESC LIMIT ?", (limit,))
+        return [dict(r) for r in cur.fetchall()]
+
+    def get_dates(self):
+        cur = self.conn.cursor()
+        cur.execute("SELECT DISTINCT date FROM matches ORDER BY date DESC")
+        return [r['date'] for r in cur.fetchall()]
+
+    def get_leagues_stats(self):
+        cur = self.conn.cursor()
+        cur.execute("SELECT league_code, league, COUNT(*) as c FROM matches GROUP BY league_code, league ORDER BY c DESC")
+        return [dict(r) for r in cur.fetchall()]
+
     def log_sync(self, source, date, count, duration_ms, status):
         try:
             cur = self.conn.cursor()
