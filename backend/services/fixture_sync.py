@@ -28,10 +28,105 @@ THESPORTSDB = "https://www.thesportsdb.com/api/v1/json/3/eventsday.php?d={date}&
 _cache = {"date": None, "data": None, "ts": 0}
 CACHE_TTL = 180
 
+
 def _parse_espn(requested_date, raw, liga_code, liga_name):
     matches = []
     if not raw:
         return matches
+    events = raw.get('events', [])
+    for ev in events:
+        try:
+            comp = ev.get('competitions', [{}])[0]
+            competitors = comp.get('competitors', [])
+            if len(competitors) < 2:
+                continue
+            home = next((c for c in competitors if c.get('homeAway') == 'home'), competitors[0])
+            away = next((c for c in competitors if c.get('homeAway') == 'away'), competitors[1] if len(competitors)>1 else competitors[0])
+            home_name = home.get('team', {}).get('displayName') or home.get('team',{}).get('shortDisplayName') or 'Local'
+            away_name = away.get('team', {}).get('displayName') or away.get('team',{}).get('shortDisplayName') or 'Visita'
+            home_score_raw = home.get('score')
+            away_score_raw = away.get('score')
+            try:
+                hs = int(home_score_raw) if home_score_raw not in (None,'','None') else None
+            except:
+                hs = None
+            try:
+                as_ = int(away_score_raw) if away_score_raw not in (None,'','None') else None
+            except:
+                as_ = None
+            
+            status_type = comp.get('status',{}).get('type',{})
+            status_name = str(status_type.get('name','NS'))
+            status_detail = str(status_type.get('detail',''))
+            status_state = str(status_type.get('state','pre')).lower()
+            
+            upper_name = status_name.upper()
+            upper_detail = status_detail.upper()
+            
+            # DETERMINAR ESTADO REAL ESPN
+            # STATUS_SCHEDULED, STATUS_IN_PROGRESS, STATUS_HALFTIME, STATUS_FULL_TIME, STATUS_FINAL, etc
+            if any(k in upper_name for k in ['STATUS_FINAL', 'STATUS_FULL_TIME', 'STATUS_AET', 'FINAL']):
+                estado = 'FINALIZADO'
+            elif 'STATUS_HALFTIME' in upper_name or 'HALF' in upper_name or 'HALF_TIME' in upper_name:
+                estado = 'EN_JUEGO'
+            elif 'STATUS_IN_PROGRESS' in upper_name or status_state == 'in' or 'LIVE' in upper_name or '1H' in upper_detail or '2H' in upper_detail:
+                estado = 'EN_JUEGO'
+            elif 'STATUS_SCHEDULED' in upper_name or 'SCHEDULED' in upper_name or status_state == 'pre':
+                estado = 'PROGRAMADO'
+            else:
+                # Fallback por status_state
+                if status_state == 'post':
+                    estado = 'FINALIZADO'
+                elif status_state == 'in':
+                    estado = 'EN_JUEGO'
+                else:
+                    estado = 'PROGRAMADO'
+            
+            # REGLA CLAVE: Si es PROGRAMADO, NO guardar marcador (ESPN manda 0-0 placeholder)
+            if estado == 'PROGRAMADO':
+                hs = None
+                as_ = None
+            
+            dt_str = ev.get('date') or comp.get('date') or ''
+            t = ''
+            fecha_real = requested_date
+            fecha_real_utc = requested_date
+            if dt_str:
+                try:
+                    dt = datetime.fromisoformat(dt_str.replace('Z','+00:00'))
+                    dt_mex = dt - timedelta(hours=6)
+                    t = dt_mex.strftime('%H:%M')
+                    fecha_real = dt_mex.strftime('%Y-%m-%d')
+                    fecha_real_utc = dt.strftime('%Y-%m-%d')
+                except:
+                    t = dt_str[11:16] if len(dt_str)>16 else ''
+                    try:
+                        fecha_real = dt_str[:10]
+                        fecha_real_utc = dt_str[:10]
+                    except:
+                        pass
+            
+            matches.append({
+                "date": fecha_real,
+                "date_utc": fecha_real_utc,
+                "time": t,
+                "home": home_name,
+                "away": away_name,
+                "league": liga_name,
+                "league_code": liga_code,
+                "competition": liga_name,
+                "status": status_name,
+                "status_detail": status_detail,
+                "estado": estado,
+                "home_score": hs,
+                "away_score": as_,
+                "score": f"{hs}-{as_}" if hs is not None and as_ is not None else None
+            })
+        except Exception:
+            continue
+    return matches
+
+# old replaced
     events = raw.get('events', [])
     for ev in events:
         try:
