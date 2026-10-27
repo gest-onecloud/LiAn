@@ -404,6 +404,79 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error":str(e),"trace":traceback.format_exc()}).encode())
             return
 
+
+        if parsed.path == "/api/supabase/test":
+            # Test directo de upsert a Supabase para ver error real
+            try:
+                from supabase import create_client
+                supa_url = os.environ.get("SUPABASE_URL")
+                supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
+                
+                if not supa_url or not supa_key:
+                    self.send_response(200)
+                    self.send_header("Content-Type","application/json")
+                    _cors(self)
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "Faltan env vars", "url_present": bool(supa_url), "key_present": bool(supa_key)}).encode())
+                    return
+                
+                client = create_client(supa_url, supa_key)
+                
+                # Intentar contar
+                count_res = client.table('matches').select('id', count='exact').limit(1).execute()
+                count_before = count_res.count if hasattr(count_res, 'count') else 0
+                
+                # Intentar insertar un partido de prueba
+                test_match = {
+                    "id": f"test_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                    "date": "2026-10-27",
+                    "time": "12:00",
+                    "home": "Test Local",
+                    "away": "Test Visita",
+                    "league": "Test League",
+                    "league_code": "test.1",
+                    "status": "NS",
+                    "estado": "PROGRAMADO",
+                    "home_score": None,
+                    "away_score": None,
+                    "score": None
+                }
+                
+                insert_res = client.table('matches').upsert(test_match, on_conflict='id').execute()
+                
+                # Contar despues
+                count_res2 = client.table('matches').select('id', count='exact').limit(1).execute()
+                count_after = count_res2.count if hasattr(count_res2, 'count') else 0
+                
+                # Borrar test
+                client.table('matches').delete().eq('id', test_match['id']).execute()
+                
+                self.send_response(200)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "status": "ok",
+                    "count_before": count_before,
+                    "count_after": count_after,
+                    "test_insert": "success",
+                    "supabase_url": supa_url[:40] + "...",
+                    "insert_data": insert_res.data if hasattr(insert_res, 'data') else None
+                }).encode())
+            except Exception as e:
+                import traceback
+                self.send_response(500)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "status": "error",
+                    "error": str(e),
+                    "trace": traceback.format_exc()[:2000]
+                }).encode())
+            return
+
+
         if parsed.path == "/api/supabase/backfill-status":
             # Estado del backfill - V114.4 fix conteo directo Supabase
             try:
