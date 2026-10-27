@@ -537,34 +537,45 @@ class Handler(BaseHTTPRequestHandler):
                     elo[away] = ea + K * (res_away - exp_away)
                 
                 # 2. Guardar en elo_ratings
-                # Primero borrar viejos
+                # Primero borrar viejos - borrar todo
                 try:
-                    client.table('elo_ratings').delete().neq('id', 0).execute()
-                except:
-                    pass
+                    # Borrar con filtro que siempre match (id > 0)
+                    client.table('elo_ratings').delete().gt('id', 0).execute()
+                    print('[calc-elo] Tabla elo_ratings limpiada')
+                except Exception as e_del:
+                    print(f'[calc-elo] Error limpiando elo_ratings: {e_del}')
+                    # Intentar delete sin filtro si el anterior falla
+                    try:
+                        client.table('elo_ratings').delete().neq('team', 'IMPOSSIBLE_TEAM_XYZ').execute()
+                    except:
+                        pass
                 
                 rows = []
                 for team, rating in elo.items():
+                    # team_id sin caracteres raros
+                    import re
+                    tid = re.sub(r'[^a-z0-9_]+', '_', team.lower().replace(' ','_'))[:100]
                     rows.append({
                         "team": team,
-                        "team_id": team.lower().replace(' ','_'),
+                        "team_id": tid,
                         "rating": round(rating, 2),
                         "date": datetime.now().strftime('%Y-%m-%d'),
                         "league_code": "global"
                     })
                 
-                # Insertar en lotes de 100
+                # Insertar en lotes de 100 SIN on_conflict (tabla no tiene unique en team_id)
                 inserted = 0
                 for i in range(0, len(rows), 100):
                     batch = rows[i:i+100]
                     try:
-                        client.table('elo_ratings').upsert(batch, on_conflict='team_id').execute()
+                        client.table('elo_ratings').insert(batch).execute()
                         inserted += len(batch)
                     except Exception as e_batch:
+                        print(f"[calc-elo] Batch {i//100} insert error: {e_batch}, intentando uno por uno")
                         # Intentar uno por uno
                         for single in batch:
                             try:
-                                client.table('elo_ratings').upsert(single, on_conflict='team_id').execute()
+                                client.table('elo_ratings').insert(single).execute()
                                 inserted += 1
                             except Exception as e_single:
                                 print(f"[calc-elo] Error {single.get('team')}: {e_single}")

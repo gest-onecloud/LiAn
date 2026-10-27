@@ -1,4 +1,4 @@
-const BACKEND = "https://lian-zfg8.onrender.com";
+const BACKEND = "https://lian-backend.onrender.com";
 const $status = document.getElementById('status');
 const $grid = document.getElementById('grid');
 const $log = document.getElementById('log');
@@ -15,6 +15,7 @@ let customCombinada = [];
 let _lastTopAlta = [];
 let _lastTopMedia = [];
 let ALL_BASE_CACHE_LOADED = false;
+let CACHE_VERSION = 'V114.8-2863'; // Force cache bust when backend changes
 
 var PROGOL_REAL = [
   {n:1, home:'PUEBLA', away:'PUMAS'},{n:2, home:'PACHUCA', away:'TIGRES'},{n:3, home:'AGUILAS', away:'TOLUCA'},{n:4, home:'ELCHE', away:'VALENCIA'},{n:5, home:'ATH. BILBAO', away:'R. SOCIEDAD'},{n:6, home:'BOURNEMOUTH', away:'LEEDS'},{n:7, home:'LIVERPOOL', away:'ARSENAL'},{n:8, home:'MILAN', away:'INTER MILAN'},{n:9, home:'JUVENTUS', away:'NAPOLES'},{n:10, home:'AUGSBURGO', away:'FRIBURGO'},{n:11, home:'LORIENT', away:'BREST'},{n:12, home:'GREMIO', away:'AT. MINEIRO'},{n:13, home:'BOCA JRS', away:'RIVER PLATE'},{n:14, home:'U. CATOLICA', away:'U. DE CHILE'}
@@ -162,11 +163,20 @@ function renderAll(){
   }catch(e){log('RENDER ERROR: '+e.message,'err');$grid.innerHTML='<div class="card"><div class="meta" style="color:#ff6b6b">Error: '+esc(e.message)+'</div></div>';}
 }
 async function loadLigaMXOnly(){
+  // Force fresh if backend changed (check localStorage version)
+  const storedVer = localStorage.getItem('lian_cache_version');
+  if(storedVer !== CACHE_VERSION){
+    localStorage.removeItem('lian_season_cache');
+    localStorage.removeItem('lian_cache_version');
+    ALL_BASE_CACHE_LOADED = false;
+    allMatches = [];
+    log('Cache version changed '+storedVer+' -> '+CACHE_VERSION+', limpiando cache','ok');
+  }
   if(ALL_BASE_CACHE_LOADED&&allMatches.length>0){log('Cache '+allMatches.length+' partidos - filtro local','ok');renderAll();return;}
   try{
     $status.textContent='Cargando base Liga MX... temporada completa';
     const data=await api('/api/liga-mx/season?limit=500');
-    if(data&&data.matches&&data.matches.length>0){allMatches=data.matches;SEASON_CACHE=data.matches;ALL_BASE_CACHE_LOADED=true;log('BASE '+data.matches.length+' partidos - cache listo','ok');renderAll();$status.textContent='BASE: '+data.count+' partidos Liga MX - Cache local activo';return;}
+    if(data&&data.matches&&data.matches.length>0){allMatches=data.matches;SEASON_CACHE=data.matches;ALL_BASE_CACHE_LOADED=true;localStorage.setItem('lian_cache_version', CACHE_VERSION);log('BASE '+data.matches.length+' partidos - cache listo','ok');renderAll();$status.textContent='BASE: '+data.count+' partidos Liga MX - Cache local activo';return;}
   }catch(e){log('Error base: '+e.message,'err');}
   try{const allData=await api('/api/calendar/season?limit=500');allMatches=allData.matches||[];ALL_BASE_CACHE_LOADED=true;$status.textContent='BASE: '+allMatches.length+' partidos - cache';renderAll();}catch(e2){$status.textContent='Error total: '+e2.message;}
 }
