@@ -156,12 +156,34 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type","application/json")
             _cors(self)
             self.end_headers()
-            records = repo.count_all()
+            # Contar directo Supabase para no depender de repo
+            records = 0
+            supa_count = 0
+            sqlite_count = 0
+            try:
+                sqlite_count = repo.count_all() if hasattr(repo, 'count_all') else 0
+            except:
+                pass
+            try:
+                from supabase import create_client
+                supa_url = os.environ.get("SUPABASE_URL")
+                supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
+                if supa_url and supa_key:
+                    supa_client = create_client(supa_url, supa_key)
+                    r = supa_client.table('matches').select('id', count='exact').limit(1).execute()
+                    supa_count = r.count if hasattr(r, 'count') and r.count else 0
+            except Exception as e:
+                supa_count = 0
+            
+            records = max(supa_count, sqlite_count) if supa_count > 0 else sqlite_count
+            
             self.wfile.write(json.dumps({
                 "ok":True,
                 "records":records,
+                "sqlite_count": sqlite_count,
+                "supabase_count": supa_count,
                 "version":Model.VERSION,
-                "mode":"REAL Poisson Paso7 + Supabase Historico V113",
+                "mode":"REAL Poisson Paso7 + Supabase Historico V114.7",
                 "db_path": str(REPO_PATH),
                 "disk_persistent": bool(DB_PATH_ENV),
                 "supabase": bool(SUPABASE_URL),
@@ -338,21 +360,50 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/liga-mx/season":
             limit = int(qs.get('limit',['500'])[0])
-            matches = repo.get_by_league("mex.1", limit=limit)
+            # Intentar directo Supabase primero para tener dato real
+            matches = []
+            try:
+                from supabase import create_client
+                supa_url = os.environ.get("SUPABASE_URL")
+                supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
+                if supa_url and supa_key:
+                    supa_client = create_client(supa_url, supa_key)
+                    # Traer mex.1 directo
+                    res = supa_client.table('matches').select('*').eq('league_code', 'mex.1').order('date', desc=True).limit(limit).execute()
+                    if res.data and len(res.data) > 0:
+                        matches = res.data
+                        print(f"[Liga MX] Supabase directo: {len(matches)} partidos mex.1")
+            except Exception as e:
+                print(f"[Liga MX] Error Supabase directo: {e}")
+            
+            # Fallback a repo si Supabase directo no trae
+            if not matches:
+                matches = repo.get_by_league("mex.1", limit=limit)
             if not matches:
                 matches = repo.get_by_league_name("Liga MX", limit=limit)
             if not matches:
                 matches = repo.get_by_league_name("mex", limit=limit)
             if not matches:
                 matches = repo.get_by_league_name("Mexico", limit=limit)
-            # FIX V100: Si hay menos de 20 (solo 4 del finde), devolver TODOS para mostrar temporada completa 135+
+            # Si hay menos de 20, traer todos desde Supabase directo
             if len(matches) < 20:
-                print(f"[Liga MX] Solo {len(matches)} mex.1, devolviendo todos como fallback temporada completa para no mostrar 0")
-                all_matches = repo.get_all(limit=limit)
-                # Si all también es poco (<20), intentar traer todo sin límite
-                if len(all_matches) < 20:
-                    all_matches = repo.get_all(limit=1000)
-                matches = all_matches if all_matches else matches
+                print(f"[Liga MX] Solo {len(matches)} mex.1, devolviendo todos desde Supabase directo")
+                try:
+                    from supabase import create_client
+                    supa_url = os.environ.get("SUPABASE_URL")
+                    supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
+                    if supa_url and supa_key:
+                        supa_client = create_client(supa_url, supa_key)
+                        res = supa_client.table('matches').select('*').order('date', desc=True).limit(limit).execute()
+                        if res.data:
+                            matches = res.data
+                except:
+                    pass
+                if len(matches) < 20:
+                    all_matches = repo.get_all(limit=limit)
+                    if len(all_matches) < 20:
+                        all_matches = repo.get_all(limit=1000)
+                    matches = all_matches if all_matches else matches
             payload = []
             for m in matches:
                 pred = model.predictions_for(m, fast=False)
@@ -419,6 +470,124 @@ class Handler(BaseHTTPRequestHandler):
                 _cors(self)
                 self.end_headers()
                 self.wfile.write(json.dumps({"error":str(e),"trace":traceback.format_exc()[:1000]}).encode())
+            return
+
+
+
+        if parsed.path == "/api/supabase/calc-elo":
+            # Calcula ELO real desde matches y lo guarda en elo_ratings
+            try:
+                from supabase import create_client
+                supa_url = os.environ.get("SUPABASE_URL")
+                supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
+                
+                if not supa_url or not supa_key:
+                    self.send_response(500)
+                    self.send_header("Content-Type","application/json")
+                    _cors(self)
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "Faltan env vars Supabase"}).encode())
+                    return
+                
+                client = create_client(supa_url, supa_key)
+                
+                # 1. Traer todos los partidos finalizados
+                res = client.table('matches').select('*').not_.is_('home_score', 'null').not_.is_('away_score', 'null').order('date', desc=False).limit(5000).execute()
+                finished = res.data if res.data else []
+                
+                # Filtrar solo FINALIZADO o con marcador valido
+                from collections import defaultdict, deque
+                from datetime import datetime
+                
+                def parse_date(m):
+                    try:
+                        return datetime.fromisoformat(str(m.get('date',''))[:10])
+                    except:
+                        return datetime.min
+                
+                finished.sort(key=parse_date)
+                
+                elo = defaultdict(lambda: 1500.0)
+                K = 20
+                
+                for m in finished:
+                    home = str(m.get('home','')).strip()
+                    away = str(m.get('away','')).strip()
+                    if not home or not away:
+                        continue
+                    try:
+                        hs = int(m.get('home_score'))
+                        aw = int(m.get('away_score'))
+                    except:
+                        continue
+                    
+                    eh = elo[home]
+                    ea = elo[away]
+                    exp_home = 1 / (1 + 10 ** ((ea - eh) / 400))
+                    exp_away = 1 - exp_home
+                    
+                    if hs > aw:
+                        res_home, res_away = 1, 0
+                    elif hs == aw:
+                        res_home, res_away = 0.5, 0.5
+                    else:
+                        res_home, res_away = 0, 1
+                    
+                    elo[home] = eh + K * (res_home - exp_home)
+                    elo[away] = ea + K * (res_away - exp_away)
+                
+                # 2. Guardar en elo_ratings
+                # Primero borrar viejos
+                try:
+                    client.table('elo_ratings').delete().neq('id', 0).execute()
+                except:
+                    pass
+                
+                rows = []
+                for team, rating in elo.items():
+                    rows.append({
+                        "team": team,
+                        "team_id": team.lower().replace(' ','_'),
+                        "rating": round(rating, 2),
+                        "date": datetime.now().strftime('%Y-%m-%d'),
+                        "league_code": "global"
+                    })
+                
+                # Insertar en lotes de 100
+                inserted = 0
+                for i in range(0, len(rows), 100):
+                    batch = rows[i:i+100]
+                    try:
+                        client.table('elo_ratings').upsert(batch, on_conflict='team_id').execute()
+                        inserted += len(batch)
+                    except Exception as e_batch:
+                        # Intentar uno por uno
+                        for single in batch:
+                            try:
+                                client.table('elo_ratings').upsert(single, on_conflict='team_id').execute()
+                                inserted += 1
+                            except Exception as e_single:
+                                print(f"[calc-elo] Error {single.get('team')}: {e_single}")
+                
+                self.send_response(200)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "status": "elo_calculated",
+                    "finished_matches": len(finished),
+                    "teams_with_elo": len(elo),
+                    "inserted": inserted,
+                    "sample": sorted([(t, round(r,1)) for t,r in elo.items()], key=lambda x: x[1], reverse=True)[:10]
+                }).encode())
+                
+            except Exception as e:
+                import traceback
+                self.send_response(500)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e), "trace": traceback.format_exc()[:2000]}).encode())
             return
 
 
