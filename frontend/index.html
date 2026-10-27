@@ -1,25 +1,26 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LiAn V114.8 V115 - Multi-Liga 2863 partidos</title>
-<link rel="stylesheet" href="style.css?v=115">
+<title>LiAn V115 - Multi-Liga 2863 partidos - REAL ELO</title>
+<!-- CSS Modulares Profesionales -->
+<link rel="stylesheet" href="css/variables.css?v=115">
+<link rel="stylesheet" href="css/layout.css?v=115">
+<link rel="stylesheet" href="css/components.css?v=115">
+<link rel="stylesheet" href="css/responsive.css?v=115">
 </head>
 <body>
 <div class="layout">
   <aside class="sidebar">
-    <div class="logo">LiAn <span>V114.8 V115</span><br><small>REAL - MULTI-LIGA</small></div>
+    <div class="logo">LiAn <span>V115</span><br><small>REAL ELO - 2863 PARTIDOS</small></div>
     <nav class="menu">
       <button class="menu-item" data-filter="search">🔍 Buscar</button>
       <button class="menu-item active" data-filter="all">⊙ Partidos del día</button>
       <button class="menu-item" data-filter="top">★ Top Picks</button>
       <button class="menu-item" data-filter="combinada">∽ Combinadas</button>
       <button class="menu-item" data-filter="progol">▤ Progol</button>
-
       <div class="menu-separator"></div>
-
       <div class="menu-group">
         <button class="menu-group-header" onclick="toggleGroup('america')">
           <span>🌎 AMÉRICA</span>
@@ -66,7 +67,6 @@
           <button class="menu-item continent" data-filter="continent:america">Ver todo América</button>
         </div>
       </div>
-
       <div class="menu-group">
         <button class="menu-group-header" onclick="toggleGroup('europa')">
           <span>🌍 EUROPA</span>
@@ -133,15 +133,13 @@
           <button class="menu-item continent" data-filter="continent:europa">Ver todo Europa</button>
         </div>
       </div>
-
       <div class="menu-separator"></div>
-
       <button class="menu-item" data-filter="analytics">📊 Estadísticas</button>
       <button class="menu-item" data-filter="aciertos">✅ Aciertos</button>
       <button class="menu-item" data-filter="fallos">❌ Fallos</button>
     </nav>
     <div class="sidebar-footer">
-      <div class="search-box" id="searchBox" style="display:none" style="display:none">
+      <div class="search-box" id="searchBox" style="display:none">
         <input type="text" id="searchInput" placeholder="Buscar equipo...">
         <input type="date" id="dateInput" value="" style="margin-top:6px;width:100%;background:#0f1a33;border:1px solid #2a3a5a;color:#fff;padding:6px;border-radius:6px">
         <select id="leagueSelect" style="margin-top:6px">
@@ -157,12 +155,12 @@
         <div style="font-size:10px;color:#8aa0c8;margin-top:4px">Calendario solo para búsqueda por fecha</div>
       </div>
       <div class="status" id="status">Cargando...</div>
-      <div class="version">V114.8 REAL ELO 2863 partidos<br>Supabase Historico 730 dias<br>BASE 2863 - ELO 330 equipos</div>
+      <div class="version">V115 REAL ELO 330 equipos<br>Supabase 2863 partidos<br>Modular CSS + JS profesional</div>
     </div>
   </aside>
   <main class="main">
     <div class="top-bar">
-      <span style="color:#1ee07a;font-weight:900;font-size:14px">🇲🇽 LIGA MX - Temporada Completa México</span>
+      <span style="color:#1ee07a;font-weight:900;font-size:14px">🇲🇽 LIGA MX - Temporada Completa México - V115 Modular</span>
       <button id="loadBtn">🔄 Cargar Liga MX</button>
       <button id="refreshBtn" class="primary">⚡ Sincronizar Liga MX</button>
       <span class="badge" id="countBadge">0 partidos</span>
@@ -171,30 +169,13 @@
     <div class="log" id="log"></div>
   </main>
 </div>
-<script>
-function toggleGroup(id){
-  const el=document.getElementById('group-'+id);
-  const arrow=document.getElementById('arrow-'+id);
-  if(el.classList.contains('open')){
-    el.classList.remove('open');
-    arrow.textContent='▶';
-  } else {
-    el.classList.add('open');
-    arrow.textContent='▼';
-  }
-}
-function toggleCountry(id){
-  const el=document.getElementById('country-'+id);
-  const arrow=document.getElementById('arrow-'+id);
-  if(el.classList.contains('open')){
-    el.classList.remove('open');
-    arrow.textContent='▶';
-  } else {
-    el.classList.add('open');
-    arrow.textContent='▼';
-  }
-}
-</script>
-<script src="app.js?v=115"></script>
+<!-- JS Modulares Profesionales -->
+<script src="js/config.js?v=115"></script>
+<script src="js/utils.js?v=115"></script>
+<script src="js/state.js?v=115"></script>
+<script src="js/api.js?v=115"></script>
+<script src="js/filters.js?v=115"></script>
+<script src="js/render.js?v=115"></script>
+<script src="js/app.js?v=115"></script>
 </body>
 </html>

@@ -1,0 +1,57 @@
+
+:root {
+  /* Colors - Tema oscuro profesional */
+  --bg-primary: #0b1220;
+  --bg-secondary: #0e172d;
+  --bg-card: #121d36;
+  --bg-card-hover: #1a2747;
+  --bg-input: #0a1228;
+  --bg-topbar: #121d36;
+  
+  --border-primary: #1e2f5a;
+  --border-secondary: #22325a;
+  --border-hover: #3a4f85;
+  --border-accent: #3a6ab5;
+  
+  --text-primary: #e8eefc;
+  --text-secondary: #9fb2d6;
+  --text-muted: #8aa0c8;
+  --text-dim: #5a7ab0;
+  --text-footer: #6a7a9a;
+  
+  --accent-green: #1ee07a;
+  --accent-blue: #8ab4ff;
+  --accent-yellow: #f5d547;
+  --accent-red: #ff6b6b;
+  --accent-gold: #ffcc00;
+  
+  /* Badge colors */
+  --badge-acierto-bg: #0f2a1a;
+  --badge-acierto-border: #1ee07a;
+  --badge-fallo-bg: #2a1212;
+  --badge-fallo-border: #ff6b6b;
+  --badge-final-bg: #1a2a4a;
+  --badge-vivo-bg: #2a1212;
+  --badge-vivo-text: #ff4444;
+  
+  /* Spacing */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 999px;
+  
+  /* Transitions */
+  --transition-fast: 0.15s;
+  --transition-medium: 0.2s;
+}
+
+/* Icon system - usar emojis por ahora, luego SVG */
+.icon { font-style: normal; }
+.icon-search::before { content: "🔍"; }
+.icon-star::before { content: "★"; }
+.icon-fire::before { content: "🔴"; }
+.icon-clock::before { content: "⏰"; }
+.icon-check::before { content: "✅"; }
+.icon-cross::before { content: "❌"; }
+.icon-mx::before { content: "🇲🇽"; }
+.icon-trophy::before { content: "🏆"; }
