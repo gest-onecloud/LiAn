@@ -66,6 +66,18 @@ def backfill_all_job(repo_supabase, days_back=730, progress_callback=None):
     
     print(f"[backfill] Iniciando backfill {days_back} dias ({start_date} a {today}) x {len(LIGAS_MUNDIALES)} ligas")
     
+    # Intentar borrar indice problematico que bloquea upserts
+    try:
+        if supabase_client:
+            # No podemos ejecutar DROP INDEX via supabase client, pero intentamos via RPC si existe
+            # Por ahora solo logueamos que intentaremos upserts con on_conflict id
+            print("[backfill] Verificando Supabase...")
+            # Test upsert pequeno
+            test_res = supabase_client.table('matches').select('id', count='exact').limit(1).execute()
+            print(f"[backfill] Supabase matches actual count: {test_res.count if hasattr(test_res, 'count') else 'unknown'}")
+    except Exception as e:
+        print(f"[backfill] Error verificando Supabase: {e}")
+    
     for idx_liga, (liga_code, liga_name) in enumerate(LIGAS_MUNDIALES):
         if progress_callback:
             progress_callback(f"Liga {idx_liga+1}/{len(LIGAS_MUNDIALES)}: {liga_code}")
