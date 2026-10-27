@@ -17,11 +17,36 @@ else:
     REPO_PATH = ROOT / 'backend' / 'data' / 'lian.db'
     REPO_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-from backend.data.repo import Repo
+# Paso 5: Supabase Historico con fallback SQLite
+try:
+    from backend.data.repo_supabase import RepoSupabase
+    HAS_SUPABASE_LIB = True
+except Exception as e:
+    print(f"[repo_supabase] no disponible: {e}")
+    HAS_SUPABASE_LIB = False
+
 from backend.services import fixture_sync, calendar as cal_service
 from backend.core.model import Model
 
-repo = Repo(str(REPO_PATH))
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
+
+if HAS_SUPABASE_LIB and SUPABASE_URL and SUPABASE_KEY:
+    try:
+        repo = RepoSupabase(str(REPO_PATH), SUPABASE_URL, SUPABASE_KEY)
+        print(f"[server] Usando RepoSupabase historico -> {SUPABASE_URL}")
+    except Exception as e:
+        print(f"[server] Error RepoSupabase, fallback SQLite: {e}")
+        from backend.data.repo import Repo
+        repo = Repo(str(REPO_PATH))
+else:
+    from backend.data.repo import Repo
+    repo = Repo(str(REPO_PATH))
+    if not SUPABASE_URL:
+        print("[server] SUPABASE_URL no configurado, usando SQLite local")
+    else:
+        print("[server] Supabase lib no disponible, usando SQLite")
+
 model = Model()
 
 # PROGOL ULTRA SEGURO - embebido, no requiere progol_sync.py
@@ -132,9 +157,11 @@ class Handler(BaseHTTPRequestHandler):
                 "ok":True,
                 "records":records,
                 "version":Model.VERSION,
-                "mode":"REAL Poisson Paso7 Temporada Completa V92.2 Ultra Seguro",
+                "mode":"REAL Poisson Paso7 + Supabase Historico V113",
                 "db_path": str(REPO_PATH),
-                "disk_persistent": bool(DB_PATH_ENV)
+                "disk_persistent": bool(DB_PATH_ENV),
+                "supabase": bool(SUPABASE_URL),
+                "supabase_url": SUPABASE_URL[:30]+"..." if SUPABASE_URL else None
             }).encode())
             return
         if parsed.path == "/api/progol/current":

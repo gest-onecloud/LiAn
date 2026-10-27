@@ -268,3 +268,113 @@ body{font-family:Inter,Arial,sans-serif;background:#0b1220;color:#e8eefc;margin:
 /* Remove old horizontal styles if needed */
 
 .proximos-section,.pasados-section{border:none;background:none;padding:0}
+
+/* V103 Compact cards like old LiAn */
+.cards-grid{
+  display:grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap:12px;
+  margin-bottom:18px;
+}
+@media (max-width: 1200px){
+  .cards-grid{ grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 700px){
+  .cards-grid{ grid-template-columns: 1fr; }
+}
+.card-compact{
+  background:#0f1f3d;
+  border:1px solid #1e3a6a;
+  border-radius:12px;
+  padding:10px 12px;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.card-top{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  font-size:10px;
+  color:#5a7ab0;
+  text-transform:uppercase;
+  letter-spacing:0.3px;
+}
+.card-league{ flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-right:8px; }
+.badge{ font-size:10px; padding:3px 7px; border-radius:999px; font-weight:700; white-space:nowrap; }
+.badge-acierto{ background:#0f2a1a; color:#1ee07a; border:1px solid #1ee07a; }
+.badge-fallo{ background:#2a1212; color:#ff6b6b; border:1px solid #ff6b6b; }
+.badge-final{ background:#1a2a4a; color:#8aa0c8; border:1px solid #2a4a7a; }
+.badge-vivo{ background:#2a1212; color:#ff4444; border:1px solid #ff4444; }
+.badge-prog{ background:#0f1f3d; color:#5a7ab0; border:1px solid #1e3a6a; }
+.card-teams{ font-weight:700; font-size:13px; color:#e6edf3; line-height:1.2; }
+.team-home, .team-away{ white-space:nowrap; }
+.vs-small{ color:#5a7ab0; font-weight:400; margin:0 4px; }
+.score-box{
+  background:#0a1228;
+  border:1px solid #1e3a6a;
+  border-radius:8px;
+  text-align:center;
+  padding:6px;
+  font-weight:900;
+  font-size:16px;
+  color:#fff;
+  letter-spacing:1px;
+}
+.score-vs{ font-size:12px; color:#5a7ab0; font-weight:600; }
+.card-probs{
+  display:flex;
+  gap:6px;
+  font-size:11px;
+  color:#8aa0c8;
+}
+.card-probs span{ background:#0a1228; border:1px solid #1e3a6a; border-radius:6px; padding:3px 6px; }
+.card-probs .sum{ margin-left:auto; color:#5a7ab0; }
+.card-bottom{
+  display:flex;
+  justify-content:space-between;
+  font-size:11px;
+  color:#8aa0c8;
+}
+.fav{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-right:8px; }
+.conf{ white-space:nowrap; }
+
+.search-horizontal{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap:nowrap;
+  overflow-x:auto;
+  padding-bottom:4px;
+}
+.search-horizontal input, .search-horizontal select{
+  flex-shrink:0;
+}
+#searchBarContainer{ width:100%; }
+#searchResults .section-title{ margin-top:14px; }
+
+
+/* V112 Responsive Full Width - PC y Movil */
+.search-filter-wrapper{width:100%!important;display:block!important;margin-bottom:20px!important;box-sizing:border-box!important}
+.search-filter-card{width:100%!important;max-width:100%!important;padding:20px;background:#0f1f3d;border:1px solid #1e3a6a;box-sizing:border-box;display:flex;flex-direction:column;gap:14px}
+.search-main-input{width:100%;padding:13px 16px;border-radius:12px;background:#0a1228;border:1px solid #1e3a6a;color:#e6edf3;font-size:15px;box-sizing:border-box}
+.search-filters-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;width:100%}
+.search-select,.search-date{padding:11px 12px;border-radius:10px;background:#0a1228;border:1px solid #1e3a6a;color:#e6edf3;width:100%;box-sizing:border-box}
+.search-actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.btn-search{padding:11px 24px;border-radius:12px;background:#1ee07a;color:#001;font-weight:900;border:none;cursor:pointer;min-width:140px}
+.btn-clear{padding:11px 18px;border-radius:12px;background:#1a2a4a;color:#8aa0c8;border:1px solid #2a4a7a;cursor:pointer}
+.search-badge{font-size:14px;color:#1ee07a;font-weight:800;min-width:60px}
+.search-results-full{width:100%!important;display:block!important;clear:both!important;box-sizing:border-box!important;margin-top:16px!important}
+.cards-grid{width:100%!important;display:grid!important;grid-template-columns:repeat(3,1fr)!important;gap:12px!important;margin-bottom:18px!important;box-sizing:border-box!important}
+@media(max-width:1100px){.cards-grid{grid-template-columns:repeat(2,1fr)!important}}
+@media(max-width:768px){.cards-grid{grid-template-columns:1fr!important}.search-filters-grid{grid-template-columns:1fr 1fr!important}.search-filter-card{padding:16px!important}}
+@media(max-width:480px){.search-filters-grid{grid-template-columns:1fr!important}.search-actions{justify-content:center!important}}
+@media(min-width:1200px){.cards-grid{grid-template-columns:repeat(3,1fr)!important}}
+
+
+/* V113 FIX - Filtro arriba 100% + Resultados abajo 100% - No lado a lado */
+#grid{display:block;width:100%}
+#grid .search-filter-wrapper{width:100%!important;display:block!important;margin-bottom:20px!important}
+#grid .search-results-full{width:100%!important;display:block!important;clear:both!important;margin-top:20px!important}
+#grid .cards-grid{width:100%!important}
+.main #grid{display:block!important}
