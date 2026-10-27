@@ -121,12 +121,35 @@ def backfill_all_job(repo_supabase, days_back=730, progress_callback=None):
         if unique_liga:
             try:
                 # Usar RepoSupabase para doble escritura (SQLite + Supabase)
-                count = repo_supabase.upsert_matches(unique_liga)
+                # Capturar stdout de upsert para ver errores de Supabase
+                import io
+                from contextlib import redirect_stdout
+                f = io.StringIO()
+                with redirect_stdout(f):
+                    count = repo_supabase.upsert_matches(unique_liga)
+                output = f.getvalue()
+                # Si hubo error de Supabase, guardarlo
+                if "[supabase] single error" in output or "[supabase] upsert error" in output or "batch" in output.lower() and "error" in output.lower():
+                    backfill_state["last_supabase_error"] = output[-1000:]
+                if "[supabase] Upsert OK" in output:
+                    # Extraer numero de insertados en Supabase
+                    try:
+                        import re
+                        m = re.search(r"Upsert OK: (\d+)/", output)
+                        if m:
+                            backfill_state["last_supabase_success"] = int(m.group(1))
+                    except:
+                        pass
+                print(output, end='')
+                
                 total_inserted += count
                 total_fetched += len(unique_liga)
-                print(f"[backfill] {liga_code} -> guardados {count} en Supabase historico")
+                print(f"[backfill] {liga_code} -> guardados {count} en historico (SQLite)")
             except Exception as e:
-                print(f"[backfill] Error guardando {liga_code}: {e}")
+                import traceback
+                err = f"[backfill] Error guardando {liga_code}: {e}\n{traceback.format_exc()[:1000]}"
+                print(err)
+                backfill_state["last_supabase_error"] = err[-1000:]
     
     print(f"[backfill] COMPLETADO: {total_fetched} fetched, {total_inserted} guardados en historico")
     
@@ -157,7 +180,9 @@ backfill_state = {
     "running": False,
     "progress": "",
     "result": None,
-    "started_at": None
+    "started_at": None,
+    "last_supabase_error": None,
+    "last_supabase_success": 0
 }
 
 def start_backfill_thread(repo_supabase, days_back=730):

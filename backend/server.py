@@ -537,6 +537,10 @@ class Handler(BaseHTTPRequestHandler):
                     except:
                         pass
                 
+                # Incluir ultimo error de Supabase capturado
+                last_supabase_err = backfill_state.get("last_supabase_error")
+                last_supabase_ok = backfill_state.get("last_supabase_success", 0)
+                
                 self.send_response(200)
                 self.send_header("Content-Type","application/json")
                 _cors(self)
@@ -548,7 +552,9 @@ class Handler(BaseHTTPRequestHandler):
                     "started_at": backfill_state["started_at"],
                     "total_in_supabase": total_supabase,
                     "sqlite_count": sqlite_count,
-                    "supa_error": supa_error
+                    "supa_error": supa_error,
+                    "last_supabase_error": last_supabase_err,
+                    "last_supabase_success": last_supabase_ok
                 }).encode())
             except Exception as e:
                 import traceback
