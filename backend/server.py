@@ -380,42 +380,67 @@ class Handler(BaseHTTPRequestHandler):
 
 
         if parsed.path == "/api/supabase/migrate":
-            # Fuerza migracion de SQLite local a Supabase historico
+            # Fuerza migracion de SQLite local a Supabase historico - V114 fix directo
             try:
-                sqlite_matches = repo_sqlite_fallback.get_all(limit=1000) if 'repo_sqlite_fallback' in globals() else []
-                # Si repo actual ya es Supabase, get_all ya trae de SQLite fallback
-                if not sqlite_matches:
-                    from backend.data.repo import Repo as RepoSQL
-                    r_sql = RepoSQL(str(REPO_PATH))
-                    sqlite_matches = r_sql.get_all(limit=1000)
+                # 1. Leer SQLite directo
+                from backend.data.repo import Repo as RepoSQL
+                r_sql = RepoSQL(str(REPO_PATH))
+                sqlite_matches = r_sql.get_all(limit=1000)
+                
                 migrated = 0
-                if hasattr(repo, 'supabase') and repo.supabase and sqlite_matches:
-                    rows = []
-                    import re
-                    for m in sqlite_matches:
-                        rows.append({
-                            "id": m.get("id"),
-                            "date": m.get("date"),
-                            "time": m.get("time",""),
-                            "home": m.get("home"),
-                            "away": m.get("away"),
-                            "league": m.get("league",""),
-                            "league_code": m.get("league_code",""),
-                            "status": m.get("status","NS"),
-                            "estado": m.get("estado","PROGRAMADO"),
-                            "home_score": m.get("home_score"),
-                            "away_score": m.get("away_score"),
-                            "score": m.get("score")
-                        })
-                    for i in range(0, len(rows), 100):
-                        batch = rows[i:i+100]
-                        repo.supabase.table("matches").upsert(batch, on_conflict="id").execute()
-                        migrated += len(batch)
+                error_msg = None
+                
+                # 2. Crear cliente Supabase directo desde env, no depender de repo.supabase
+                supa_url = os.environ.get("SUPABASE_URL")
+                supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
+                
+                if not supa_url or not supa_key:
+                    error_msg = f"Faltan env vars: SUPABASE_URL={bool(supa_url)} SUPABASE_KEY={bool(supa_key)}"
+                else:
+                    try:
+                        from supabase import create_client
+                        supa_client = create_client(supa_url, supa_key)
+                        rows = []
+                        import re
+                        for m in sqlite_matches:
+                            # Validar fecha
+                            d = m.get("date")
+                            if not d:
+                                continue
+                            rows.append({
+                                "id": m.get("id"),
+                                "date": d,
+                                "time": m.get("time",""),
+                                "home": m.get("home"),
+                                "away": m.get("away"),
+                                "league": m.get("league",""),
+                                "league_code": m.get("league_code",""),
+                                "status": m.get("status","NS"),
+                                "estado": m.get("estado","PROGRAMADO"),
+                                "home_score": m.get("home_score"),
+                                "away_score": m.get("away_score"),
+                                "score": m.get("score")
+                            })
+                        for i in range(0, len(rows), 100):
+                            batch = rows[i:i+100]
+                            supa_client.table("matches").upsert(batch, on_conflict="id").execute()
+                            migrated += len(batch)
+                    except Exception as e:
+                        error_msg = f"Supabase error: {str(e)}"
+                        import traceback
+                        error_msg += " " + traceback.format_exc()[:500]
+                
                 self.send_response(200)
                 self.send_header("Content-Type","application/json")
                 _cors(self)
                 self.end_headers()
-                self.wfile.write(json.dumps({"status":"migrated","sqlite_count":len(sqlite_matches),"migrated_to_supabase":migrated}).encode())
+                self.wfile.write(json.dumps({
+                    "status":"migrated" if migrated>0 else "no_migrated",
+                    "sqlite_count":len(sqlite_matches),
+                    "migrated_to_supabase":migrated,
+                    "supabase_url_present": bool(supa_url),
+                    "error": error_msg
+                }).encode())
             except Exception as e:
                 import traceback
                 self.send_response(500)
