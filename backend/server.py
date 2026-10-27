@@ -378,6 +378,53 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"date":date,"league":"mex.1","matches":payload,"count":len(payload),"source":"Liga MX fast + fallback"}).encode())
             return
 
+
+        if parsed.path == "/api/supabase/migrate":
+            # Fuerza migracion de SQLite local a Supabase historico
+            try:
+                sqlite_matches = repo_sqlite_fallback.get_all(limit=1000) if 'repo_sqlite_fallback' in globals() else []
+                # Si repo actual ya es Supabase, get_all ya trae de SQLite fallback
+                if not sqlite_matches:
+                    from backend.data.repo import Repo as RepoSQL
+                    r_sql = RepoSQL(str(REPO_PATH))
+                    sqlite_matches = r_sql.get_all(limit=1000)
+                migrated = 0
+                if hasattr(repo, 'supabase') and repo.supabase and sqlite_matches:
+                    rows = []
+                    import re
+                    for m in sqlite_matches:
+                        rows.append({
+                            "id": m.get("id"),
+                            "date": m.get("date"),
+                            "time": m.get("time",""),
+                            "home": m.get("home"),
+                            "away": m.get("away"),
+                            "league": m.get("league",""),
+                            "league_code": m.get("league_code",""),
+                            "status": m.get("status","NS"),
+                            "estado": m.get("estado","PROGRAMADO"),
+                            "home_score": m.get("home_score"),
+                            "away_score": m.get("away_score"),
+                            "score": m.get("score")
+                        })
+                    for i in range(0, len(rows), 100):
+                        batch = rows[i:i+100]
+                        repo.supabase.table("matches").upsert(batch, on_conflict="id").execute()
+                        migrated += len(batch)
+                self.send_response(200)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({"status":"migrated","sqlite_count":len(sqlite_matches),"migrated_to_supabase":migrated}).encode())
+            except Exception as e:
+                import traceback
+                self.send_response(500)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({"error":str(e),"trace":traceback.format_exc()}).encode())
+            return
+
         self.send_response(404)
         _cors(self)
         self.end_headers()
