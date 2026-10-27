@@ -405,17 +405,36 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/supabase/backfill-status":
-            # Estado del backfill
+            # Estado del backfill - V114.4 fix conteo directo Supabase
             try:
                 from backend.services.backfill import backfill_state
-                # Contar en Supabase
+                # Contar en Supabase DIRECTO desde env, no depender de repo.supabase
                 total_supabase = 0
+                supa_error = None
                 try:
-                    if hasattr(repo, 'supabase') and repo.supabase:
-                        r = repo.supabase.table('matches').select('id', count='exact').limit(1).execute()
-                        total_supabase = r.count if r.count else 0
+                    from supabase import create_client
+                    supa_url = os.environ.get("SUPABASE_URL")
+                    supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
+                    if supa_url and supa_key:
+                        supa_client = create_client(supa_url, supa_key)
+                        r = supa_client.table('matches').select('id', count='exact').limit(1).execute()
+                        total_supabase = r.count if hasattr(r, 'count') and r.count else 0
+                    else:
+                        supa_error = "No env vars"
+                except Exception as e:
+                    supa_error = str(e)[:500]
+                
+                # Contar SQLite directo
+                sqlite_count = 0
+                try:
+                    from backend.data.repo import Repo as RepoSQL
+                    r_sql = RepoSQL(str(REPO_PATH))
+                    sqlite_count = r_sql.count_all()
                 except:
-                    pass
+                    try:
+                        sqlite_count = repo.count_all() if hasattr(repo, 'count_all') else 0
+                    except:
+                        pass
                 
                 self.send_response(200)
                 self.send_header("Content-Type","application/json")
@@ -427,7 +446,8 @@ class Handler(BaseHTTPRequestHandler):
                     "result": backfill_state["result"],
                     "started_at": backfill_state["started_at"],
                     "total_in_supabase": total_supabase,
-                    "sqlite_count": repo.count_all() if hasattr(repo, 'count_all') else 0
+                    "sqlite_count": sqlite_count,
+                    "supa_error": supa_error
                 }).encode())
             except Exception as e:
                 import traceback
@@ -435,7 +455,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header("Content-Type","application/json")
                 _cors(self)
                 self.end_headers()
-                self.wfile.write(json.dumps({"error":str(e)}).encode())
+                self.wfile.write(json.dumps({"error":str(e), "trace": traceback.format_exc()[:1000]}).encode())
             return
 
 

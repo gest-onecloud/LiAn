@@ -27,6 +27,31 @@ LIGAS_MUNDIALES = [
 ]
 
 def backfill_all_job(repo_supabase, days_back=730, progress_callback=None):
+    # Crear cliente Supabase directo como fallback si repo no tiene
+    direct_supabase = None
+    try:
+        from supabase import create_client
+        import os
+        supa_url = os.environ.get("SUPABASE_URL")
+        supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
+        if supa_url and supa_key:
+            direct_supabase = create_client(supa_url, supa_key)
+            print(f"[backfill] Cliente directo Supabase creado: {supa_url[:30]}...")
+    except Exception as e:
+        print(f"[backfill] No se pudo crear cliente directo Supabase: {e}")
+    
+    # Usar el que tenga repo o el directo
+    supabase_client = None
+    if hasattr(repo_supabase, 'supabase') and repo_supabase.supabase:
+        supabase_client = repo_supabase.supabase
+    elif direct_supabase:
+        supabase_client = direct_supabase
+        # Asignar al repo para que upsert lo use
+        try:
+            repo_supabase.supabase = direct_supabase
+        except:
+            pass
+
     """
     Job que corre en background: recorre days_back dias para 15 ligas
     Guarda en Supabase historico que crece (no borra)
