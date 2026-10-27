@@ -379,6 +379,66 @@ class Handler(BaseHTTPRequestHandler):
             return
 
 
+
+        if parsed.path == "/api/supabase/backfill-all":
+            # Inicia backfill completo 15 ligas x 730 dias en background
+            try:
+                qs_days = int(qs.get('days',['730'])[0])
+            except:
+                qs_days = 730
+            
+            try:
+                from backend.services.backfill import start_backfill_thread, backfill_state
+                res = start_backfill_thread(repo, days_back=qs_days)
+                self.send_response(200)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps(res).encode())
+            except Exception as e:
+                import traceback
+                self.send_response(500)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({"error":str(e),"trace":traceback.format_exc()}).encode())
+            return
+
+        if parsed.path == "/api/supabase/backfill-status":
+            # Estado del backfill
+            try:
+                from backend.services.backfill import backfill_state
+                # Contar en Supabase
+                total_supabase = 0
+                try:
+                    if hasattr(repo, 'supabase') and repo.supabase:
+                        r = repo.supabase.table('matches').select('id', count='exact').limit(1).execute()
+                        total_supabase = r.count if r.count else 0
+                except:
+                    pass
+                
+                self.send_response(200)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "running": backfill_state["running"],
+                    "progress": backfill_state["progress"],
+                    "result": backfill_state["result"],
+                    "started_at": backfill_state["started_at"],
+                    "total_in_supabase": total_supabase,
+                    "sqlite_count": repo.count_all() if hasattr(repo, 'count_all') else 0
+                }).encode())
+            except Exception as e:
+                import traceback
+                self.send_response(500)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({"error":str(e)}).encode())
+            return
+
+
         if parsed.path == "/api/supabase/migrate":
             # Fuerza migracion de SQLite local a Supabase historico - V114 fix directo
             try:
