@@ -1,6 +1,6 @@
 """
-LiAn V115 - REAL ELO desde Supabase elo_ratings (330 equipos) - Memoria ligera
-Opcion 2: No carga 1000 partidos, carga directo 330 ELOs desde tabla
+LiAn V116 - REAL ELO + REAL team_stats desde Supabase - Memoria ligera
+Carga 330 ELOs + 330 team_stats (ataque/defensa real) - Poisson real
 Poisson 58%, ELO 16%, Forma 10%, MonteCarlo 16% - 6000 sims
 """
 import math
@@ -17,7 +17,7 @@ except:
     HAS_YAML = False
 
 class Model:
-    VERSION = "V115 REAL ELO - Supabase 330 equipos - Ligero"
+    VERSION = "V116 REAL ELO + team_stats - Supabase 330+330 - Ligero"
 
     def __init__(self, repo=None):
         self.weights = {"poisson": 0.58, "elo_fuerza": 0.16, "forma": 0.10, "montecarlo": 0.16}
@@ -38,37 +38,40 @@ class Model:
         self.history_loaded = False
         self.history_count = 0
         self.elo_source = "none"
+        self.team_stats_source = "none"
 
-        # OPCION 2: Intentar cargar ELO directo desde tabla elo_ratings (ligero, 330 filas)
-        loaded = False
-        if not loaded:
-            loaded = self._load_elo_from_supabase_table()
+        # Cargar ELO ligero 330
+        loaded_elo = self._load_elo_from_supabase_table()
+        # Cargar team_stats ligero 330
+        loaded_stats = self._load_team_stats_from_supabase_table()
 
-        # Fallback: calcular desde repo si no se pudo cargar tabla
-        if not loaded and repo:
-            print("[Model V115] No se pudo cargar elo_ratings tabla, calculando desde matches...")
+        if loaded_elo or loaded_stats:
+            self.history_loaded = True
+            self.elo_source = "elo_ratings_table" if loaded_elo else "none"
+            self.team_stats_source = "team_stats_table" if loaded_stats else "none"
+            self.history_count = max(len(self.elo), len(self.team_stats))
+            print(f"[Model V116] ELO: {len(self.elo)} equipos, team_stats: {len(self.team_stats)} equipos")
+
+        # Fallback: calcular desde repo si no se pudo cargar nada
+        if not self.history_loaded and repo:
+            print("[Model V116] No se pudo cargar tablas, calculando desde matches...")
             loaded = self.load_historical_stats(repo, limit=1000)
+            self.history_loaded = loaded
 
-        if not loaded:
-            print("[Model V115] Usando fallback hash (sin historial)")
+        if not self.history_loaded:
+            print("[Model V116] Usando fallback hash (sin historial)")
 
     def _load_elo_from_supabase_table(self):
-        """OPCION 2 - Memoria ligera: carga 330 ELOs directo, no 1000 partidos"""
         try:
             from supabase import create_client
             supa_url = os.environ.get("SUPABASE_URL")
             supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
             if not supa_url or not supa_key:
-                print("[Model] No hay env vars Supabase para cargar ELO")
                 return False
-
             client = create_client(supa_url, supa_key)
-            # Traer todos los ELOs - 330 filas, muy ligero vs 2863 partidos
             res = client.table('elo_ratings').select('team, rating').limit(1000).execute()
             if not res.data:
-                print("[Model] elo_ratings vacia, no se pudo cargar")
                 return False
-
             for row in res.data:
                 team = str(row.get('team','')).strip()
                 try:
@@ -77,21 +80,52 @@ class Model:
                     rating = 1500.0
                 if team:
                     self.elo[team] = rating
-
-            self.history_loaded = True
-            self.history_count = len(res.data)
-            self.elo_source = "elo_ratings_table"
-            print(f"[Model V115] ELO cargado desde tabla elo_ratings: {len(res.data)} equipos (memoria ligera)")
+            print(f"[Model V116] ELO cargado: {len(res.data)} equipos")
             return True
-
         except Exception as e:
-            print(f"[Model] Error cargando ELO desde tabla: {e}")
+            print(f"[Model] Error cargando ELO: {e}")
+            return False
+
+    def _load_team_stats_from_supabase_table(self):
+        """NUEVO V116 - Carga ataque/defensa real desde team_stats tabla"""
+        try:
+            from supabase import create_client
+            supa_url = os.environ.get("SUPABASE_URL")
+            supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
+            if not supa_url or not supa_key:
+                return False
+            client = create_client(supa_url, supa_key)
+            res = client.table('team_stats').select('*').limit(1000).execute()
+            if not res.data:
+                print("[Model] team_stats vacia")
+                return False
+            
+            for row in res.data:
+                team = str(row.get('team','')).strip()
+                if not team:
+                    continue
+                self.team_stats[team] = {
+                    "gf": int(row.get('goals_for', 0) or 0),
+                    "ga": int(row.get('goals_against', 0) or 0),
+                    "mp": int(row.get('matches_played', 0) or 0),
+                    "avg_for": float(row.get('avg_goals_for', 0) or 0),
+                    "avg_against": float(row.get('avg_goals_against', 0) or 0),
+                    "attack": float(row.get('attack_strength', 1.0) or 1.0),
+                    "defense": float(row.get('defense_strength', 1.0) or 1.0),
+                    "form": str(row.get('form_last5','') or ''),
+                    "pts_last5": int(row.get('points_last5', 0) or 0),
+                    "w": 0, "d": 0, "l": 0  # Se calcula desde forma si existe
+                }
+            
+            print(f"[Model V116] team_stats cargado: {len(res.data)} equipos - Ataque/defensa REAL")
+            return True
+        except Exception as e:
+            print(f"[Model] Error cargando team_stats: {e}")
             import traceback
             print(traceback.format_exc()[:800])
             return False
 
     def load_historical_stats(self, repo, limit=1000):
-        """Fallback: calcula ELO desde matches (mas pesado, 1000 partidos)"""
         try:
             matches = repo.get_all(limit=limit)
             finished = [m for m in matches if m.get('home_score') is not None and m.get('away_score') is not None]
@@ -103,7 +137,7 @@ class Model:
             finished.sort(key=parse_date)
             
             elo = defaultdict(lambda: 1500)
-            stats = defaultdict(lambda: {"gf": 0, "ga": 0, "mp": 0, "w": 0, "d": 0, "l": 0, "form": deque(maxlen=5)})
+            stats = defaultdict(lambda: {"gf": 0, "ga": 0, "mp": 0, "w": 0, "d": 0, "l": 0, "form": deque(maxlen=5), "avg_for":0, "avg_against":0, "attack":1.0, "defense":1.0})
             K = 20
             for m in finished:
                 home = str(m.get('home','')).strip()
@@ -149,12 +183,21 @@ class Model:
                     stats[home]["form"].append("L")
                     stats[away]["form"].append("W")
             
+            # Calcular promedios
+            for team, s in stats.items():
+                mp = max(1, s["mp"])
+                s["avg_for"] = s["gf"] / mp
+                s["avg_against"] = s["ga"] / mp
+                s["attack"] = s["avg_for"] / 1.35
+                s["defense"] = s["avg_against"] / 1.35
+            
             self.elo = elo
             self.team_stats = stats
             self.history_loaded = True
             self.history_count = len(finished)
             self.elo_source = "matches_calc"
-            print(f"[Model V115] Historico calculado: {len(finished)} finalizados, {len(elo)} equipos")
+            self.team_stats_source = "matches_calc"
+            print(f"[Model V116] Historico calculado: {len(finished)} finalizados, {len(elo)} equipos")
             return True
             
         except Exception as e:
@@ -172,26 +215,40 @@ class Model:
         return 0.8 + (h % 500) / 1000.0
 
     def _team_attack_defense(self, team_name: str):
-        if self.history_loaded and team_name in self.team_stats:
+        if team_name in self.team_stats:
             s = self.team_stats[team_name]
-            mp = max(1, s["mp"])
-            attack = s["gf"] / mp
-            defense = s["ga"] / mp
-            return attack, defense, s["mp"]
-        # Si solo tenemos ELO, estimar ataque/defensa desde ELO
+            mp = s.get("mp", 0)
+            if mp > 0:
+                # Usar stats reales
+                attack = s.get("avg_for", 0) if s.get("avg_for",0)>0 else s.get("gf",0)/mp
+                defense = s.get("avg_against", 0) if s.get("avg_against",0)>0 else s.get("ga",0)/mp
+                return attack, defense, mp
         if self.history_loaded and team_name in self.elo:
             elo = self.elo[team_name]
-            # ELO 1500 = 1.2 goles promedio, 1600 = 1.5, 1400 = 0.9
             base = 0.6 + (elo - 1300) / 500.0
             return max(0.4, base), max(0.4, 2.4 - base), 0
         return 1.2, 1.2, 0
 
     def _team_form(self, team_name: str) -> float:
-        if self.history_loaded and team_name in self.team_stats:
-            form = self.team_stats[team_name]["form"]
-            if not form:
+        if team_name in self.team_stats:
+            s = self.team_stats[team_name]
+            form_str = s.get("form","") if isinstance(s.get("form",""), str) else "-".join(list(s.get("form",[])))
+            if not form_str:
+                # Intentar deque
+                form = s.get("form", [])
+                if hasattr(form, '__iter__') and not isinstance(form, str):
+                    form = list(form)
+                else:
+                    form = []
+                if not form:
+                    return 0
+                score = sum(1 if x=="W" else 0.5 if x=="D" else 0 for x in form) / len(form)
+                return (score - 0.5) * 0.2
+            # Parse "W-D-L-W-W"
+            parts = [x.strip() for x in form_str.replace(",","-").split("-") if x.strip()]
+            if not parts:
                 return 0
-            score = sum(1 if x=="W" else 0.5 if x=="D" else 0 for x in form) / len(form)
+            score = sum(1 if x=="W" else 0.5 if x=="D" else 0 for x in parts) / len(parts)
             return (score - 0.5) * 0.2
         return 0
 
@@ -265,14 +322,22 @@ class Model:
         form_home = self._team_form(home)
         form_away = self._team_form(away)
 
-        if self.history_loaded and mp_home > 0:
+        if home in self.team_stats and self.team_stats[home].get("mp",0) > 0:
+            s_home = self.team_stats[home]
+            s_away = self.team_stats.get(away, {"mp":0, "avg_for":1.2, "avg_against":1.2, "attack":1.0, "defense":1.0})
+            # Poisson real: ataque_home * (2 - defensa_away) * factor localia
+            xg_home = round((s_home.get("avg_for", att_home) * 0.6 + (2 - s_away.get("avg_against", def_away)) * 0.4) * 1.12 + form_home, 2)
+            xg_away = round((s_away.get("avg_for", att_away) * 0.6 + (2 - s_home.get("avg_against", def_home)) * 0.4) * 0.92 + form_away, 2)
+            xg_home = max(0.15, xg_home)
+            xg_away = max(0.15, xg_away)
+            xg_source = f"REAL team_stats {self.team_stats_source} {mp_home}/{mp_away} pj"
+        elif self.history_loaded and mp_home > 0:
             xg_home = round((att_home * 0.7 + (2 - def_away) * 0.3) * 1.15, 2)
             xg_away = round((att_away * 0.7 + (2 - def_home) * 0.3) * 0.95, 2)
             xg_home = max(0.2, xg_home + form_home)
             xg_away = max(0.2, xg_away + form_away)
-            xg_source = f"ELO {self.elo_source} {mp_home}/{mp_away} pj" if mp_home>0 else f"ELO tabla {self.elo_source}"
+            xg_source = f"ELO {self.elo_source} {mp_home}/{mp_away} pj"
         elif self.history_loaded:
-            # Solo ELO, sin ataque/defensa detallado, usar fuerza
             xg_home = round(1.35 * str_home * 1.15, 2)
             xg_away = round(1.15 * str_away * 0.95, 2)
             xg_source = f"REAL ELO tabla {self.elo_source} 330 equipos"
@@ -292,7 +357,7 @@ class Model:
         s = prob_elo["1"]+prob_elo["X"]+prob_elo["2"]
         prob_elo = {k: round(v/s*100,1) for k,v in prob_elo.items()}
 
-        if self.history_loaded and mp_home>0:
+        if home in self.team_stats:
             form_diff = form_home - form_away
             prob_forma = {
                 "1": max(5, min(85, prob_poisson["1"] + form_diff*30)),
@@ -390,7 +455,7 @@ class Model:
             explic = [
                 f"xG {xg_home}-{xg_away} ({xg_source})",
                 f"ELO {home}={elo_home:.0f} vs {away}={elo_away:.0f} diff={elo_home-elo_away:.0f} src={self.elo_source}",
-                f"Ataque {home}={att_home:.2f} Def={def_home:.2f} | {away} Att={att_away:.2f} Def={def_away:.2f}",
+                f"Ataque {home}={att_home:.2f} Def={def_home:.2f} | {away} Att={att_away:.2f} Def={def_away:.2f} src={self.team_stats_source}",
                 f"MonteCarlo 6000: 1={prob_mc['1']}% X={prob_mc['X']}% 2={prob_mc['2']}%"
             ]
         else:
@@ -423,7 +488,7 @@ class Model:
             "evidence": evidencia,
             "sufficiency": suf,
             "risk": riesgo,
-            "source": f"Ensemble REAL {w['poisson']*100:.0f}%Poisson/{w['elo_fuerza']*100:.0f}%ELO/{w['forma']*100:.0f}%Forma/{w['montecarlo']*100:.0f}%MC6000 - {self.history_count} equipos {self.elo_source}" if self.history_loaded else f"Ensemble {w['poisson']*100:.0f}%Poisson",
+            "source": f"Ensemble REAL {w['poisson']*100:.0f}%Poisson/{w['elo_fuerza']*100:.0f}%ELO/{w['forma']*100:.0f}%Forma/{w['montecarlo']*100:.0f}%MC6000 - {self.history_count} equipos {self.elo_source}+{self.team_stats_source}" if self.history_loaded else f"Ensemble {w['poisson']*100:.0f}%Poisson",
             "explicabilidad": explic,
             "home_score": match.get('home_score'),
             "away_score": match.get('away_score'),
@@ -437,5 +502,10 @@ class Model:
             "elo_home": self.elo.get(home, 1500) if self.history_loaded else None,
             "elo_away": self.elo.get(away, 1500) if self.history_loaded else None,
             "historical_data": self.history_count if self.history_loaded else 0,
-            "elo_source": self.elo_source
+            "elo_source": self.elo_source,
+            "team_stats_source": self.team_stats_source,
+            "attack_home": att_home,
+            "defense_home": def_home,
+            "attack_away": att_away,
+            "defense_away": def_away
         }

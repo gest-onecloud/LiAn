@@ -492,8 +492,21 @@ class Handler(BaseHTTPRequestHandler):
                 client = create_client(supa_url, supa_key)
                 
                 # 1. Traer todos los partidos finalizados
-                res = client.table('matches').select('*').not_.is_('home_score', 'null').not_.is_('away_score', 'null').order('date', desc=False).limit(5000).execute()
-                finished = res.data if res.data else []
+                # Paginado para evitar limite 1000 de Supabase
+                finished = []
+                offset = 0
+                batch_size = 1000
+                while True:
+                    res = client.table('matches').select('*').not_.is_('home_score', 'null').not_.is_('away_score', 'null').order('date', desc=False).range(offset, offset+batch_size-1).execute()
+                    batch = res.data if res.data else []
+                    if not batch:
+                        break
+                    finished.extend(batch)
+                    if len(batch) < batch_size:
+                        break
+                    offset += batch_size
+                    if offset >= 5000:
+                        break
                 
                 # Filtrar solo FINALIZADO o con marcador valido
                 from collections import defaultdict, deque
@@ -618,8 +631,21 @@ class Handler(BaseHTTPRequestHandler):
                 client = create_client(supa_url, supa_key)
                 
                 # 1. Traer todos los partidos finalizados con marcador
-                res = client.table('matches').select('*').not_.is_('home_score', 'null').not_.is_('away_score', 'null').order('date', desc=False).limit(5000).execute()
-                finished = res.data if res.data else []
+                # Paginado para evitar limite 1000 de Supabase
+                finished = []
+                offset = 0
+                batch_size = 1000
+                while True:
+                    res = client.table('matches').select('*').not_.is_('home_score', 'null').not_.is_('away_score', 'null').order('date', desc=False).range(offset, offset+batch_size-1).execute()
+                    batch = res.data if res.data else []
+                    if not batch:
+                        break
+                    finished.extend(batch)
+                    if len(batch) < batch_size:
+                        break
+                    offset += batch_size
+                    if offset >= 5000:
+                        break
                 
                 from collections import defaultdict, deque
                 from datetime import datetime
