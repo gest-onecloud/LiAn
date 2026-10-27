@@ -552,12 +552,9 @@ class Handler(BaseHTTPRequestHandler):
                 
                 rows = []
                 for team, rating in elo.items():
-                    # team_id sin caracteres raros
-                    import re
-                    tid = re.sub(r'[^a-z0-9_]+', '_', team.lower().replace(' ','_'))[:100]
+                    # Sin team_id para evitar FK error con teams table vacia
                     rows.append({
                         "team": team,
-                        "team_id": tid,
                         "rating": round(rating, 2),
                         "date": datetime.now().strftime('%Y-%m-%d'),
                         "league_code": "global"
