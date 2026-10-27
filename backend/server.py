@@ -747,7 +747,7 @@ class Handler(BaseHTTPRequestHandler):
                     "teams_with_stats": len(stats),
                     "inserted": inserted,
                     "avg_league_gf": round(avg_league_gf,3),
-                    "sample": sorted([(t, s["gf"], s["ga"], s["mp"]) for t,s in list(stats.items())[:10], ], key=lambda x: x[1], reverse=True)[:10]
+                    "sample": sorted([(t, s["gf"], s["ga"], s["mp"]) for t,s in list(stats.items())[:10]], key=lambda x: x[1], reverse=True)[:10]
                 }).encode())
                 
             except Exception as e:
