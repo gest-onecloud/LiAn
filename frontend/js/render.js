@@ -1,4 +1,4 @@
-// Render - Visualizacion de tarjetas y secciones
+// Render V116.3 - Con contadores Acertó/Falló para ajuste modelo
 function cardA(m){
   const p=m.probabilities||{'1':0,'X':0,'2':0};
   const total=((p['1']||0)+(p['X']||0)+(p['2']||0)).toFixed(1);
@@ -12,9 +12,29 @@ function cardA(m){
   return '<div class="card-compact"><div class="card-top"><span class="card-league">'+esc(liga)+' • '+esc(hora)+' • '+esc(fecha)+'</span>'+badge+'</div><div class="card-teams"><span>'+esc(m.home)+'</span><span class="vs-small"> vs </span><span>'+esc(m.away)+'</span></div>'+scoreBox+'<div class="card-probs"><span>L: '+(p['1']||0).toFixed(1)+'%</span><span>E: '+(p['X']||0).toFixed(1)+'%</span><span>V: '+(p['2']||0).toFixed(1)+'%</span><span class="sum">Σ '+total+'%</span></div><div class="card-bottom"><span class="fav">★ '+esc(fav)+'</span><span class="conf">Conf: '+esc(conf)+dot+'</span></div></div>';
 }
 
+function calcStats(matches){
+  const fin = matches.filter(m=>m.estado==='FINALIZADO');
+  const ac = fin.filter(m=>m.acierto===true).length;
+  const fa = fin.filter(m=>m.acierto===false).length;
+  const tot = fin.length;
+  const pct = tot>0 ? ((ac/tot)*100).toFixed(1) : 0;
+  return {total:matches.length, fin:tot, ac:ac, fa:fa, pct:pct};
+}
+
+function renderStatsBar(matches, extra=''){
+  const s = calcStats(matches);
+  if(s.fin===0) return '<div class="section-title">'+extra+' ('+matches.length+')</div>';
+  return '<div class="section-title" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px"><span>'+extra+' ('+matches.length+')</span><span style="font-size:12px">Finalizados: '+s.fin+' | ✅ '+s.ac+' Acertó | ❌ '+s.fa+' Falló | '+s.pct+'% acierto</span></div>';
+}
+
 function renderSection(title,matches){
   if(matches.length===0) return '';
-  return '<div class="section-title">'+title+'</div><div class="cards-grid">'+matches.map(cardA).join('')+'</div>';
+  const s = calcStats(matches);
+  let statsTxt = '';
+  if(title.includes('Finalizados') && s.fin>0){
+    statsTxt = ' - ✅ '+s.ac+' | ❌ '+s.fa+' | '+s.pct+'%';
+  }
+  return '<div class="section-title">'+title+statsTxt+'</div><div class="cards-grid">'+matches.map(cardA).join('')+'</div>';
 }
 
 function findMatchForProgol(home,away){
@@ -68,8 +88,15 @@ function updateSearchResultsOnly(){
       html='<div class="search-empty" style="text-align:center;padding:50px 20px;border:1px dashed #1e3a6a;border-radius:12px;background:#0a1228"><div style="font-size:48px">🔍</div><h2 style="color:#e6edf3;margin:12px 0">Busca un equipo o liga</h2><p style="color:#8aa0c8">Escribe \"Atlas\", \"América\", \"Liga MX\" o elige liga y rango<br>Tienes '+allMatches.length+' partidos en cache temporada completa</p></div>';
       container.innerHTML=html;return;
     }
-    const rangeTxt=(fromV||toV)?' del '+(fromV||'inicio')+' al '+(toV||'hoy'):'';html+='<div class="section-title">🔍 \"'+esc(q)+'\" '+(liga!=='all'?esc(liga):'')+rangeTxt+' ('+filtered.length+')</div>';
-    const g=groupByEstado(filtered);if(g.enJuego.length>0)html+=renderSection('🔴 En Juego ('+g.enJuego.length+')',g.enJuego);if(g.programados.length>0)html+=renderSection('⏰ Programados ('+g.programados.length+')',g.programados);if(g.finalizados.length>0)html+=renderSection('✅ Finalizados ('+g.finalizados.length+')',g.finalizados);if(filtered.length===0)html+='<div class="card"><div class="meta">No hay partidos para \"'+esc(q)+'\" '+esc(liga)+' '+rangeTxt+'. Prueba sin fechas.</div></div>';container.innerHTML=html;
+    const st = calcStats(filtered);
+    const rangeTxt=(fromV||toV)?' del '+(fromV||'inicio')+' al '+(toV||'hoy'):''; 
+    html+='<div class="section-title" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px"><span>🔍 \"'+esc(q)+'\" '+(liga!=='all'?esc(liga):'')+rangeTxt+' ('+filtered.length+')</span><span style="font-size:12px;color:#8ab4ff">Finalizados: '+st.fin+' | ✅ '+st.ac+' ('+st.pct+'%) | ❌ '+st.fa+'</span></div>';
+    const g=groupByEstado(filtered);
+    if(g.enJuego.length>0)html+=renderSection('🔴 En Juego ('+g.enJuego.length+')',g.enJuego);
+    if(g.programados.length>0)html+=renderSection('⏰ Programados ('+g.programados.length+')',g.programados);
+    if(g.finalizados.length>0)html+=renderSection('✅ Finalizados ('+g.finalizados.length+')',g.finalizados);
+    if(filtered.length===0)html+='<div class="card"><div class="meta">No hay partidos para \"'+esc(q)+'\" '+esc(liga)+' '+rangeTxt+'. Prueba sin fechas.</div></div>';
+    container.innerHTML=html;
   }catch(e){console.error(e);log('Search render err: '+e.message,'err');}
 }
 
@@ -78,14 +105,16 @@ function renderAll(){
     const filtered=getFiltered();
     const $grid=document.getElementById('grid');
     const $countBadge=document.getElementById('countBadge');
-    if($countBadge) $countBadge.textContent=filtered.length+' partidos / '+allMatches.length+' total';
+    const globalStats = calcStats(allMatches);
+    const filteredStats = calcStats(filtered);
+    if($countBadge) $countBadge.textContent=filtered.length+' partidos / '+allMatches.length+' total | Global: ✅ '+globalStats.ac+' ❌ '+globalStats.fa+' ('+globalStats.pct+'%)';
     if(currentFilter==='search'){
       $grid.style.display='block'; $grid.style.width='100%';
       const exists=document.getElementById('searchBarContainer');
       if(!exists){
         const $searchInput=document.getElementById('searchInput');const $leagueSelect=document.getElementById('leagueSelect');
         const q=($searchInput?$searchInput.value:'').trim();const ligaVal=$leagueSelect?$leagueSelect.value:'all';
-        let html='<div id="searchFilterWrapper" class="search-filter-wrapper" style="width:100%;display:block;margin-bottom:20px"><div id="searchBarContainer" class="card search-filter-card"><input id="topSearchInput" type="text" placeholder="Buscar: América, Atlas, Pumas, Liga MX..." value="'+esc(q)+'" class="search-main-input"><div class="search-filters-grid"><select id="topLeagueSelect" class="search-select"><option value="all" '+(ligaVal==='all'?'selected':'')+'>Todas las ligas</option><option value="mex" '+(ligaVal.toLowerCase().indexOf('mex')>=0?'selected':'')+'>Liga MX</option><option value="arg" '+(ligaVal.toLowerCase().indexOf('arg')>=0?'selected':'')+'>Argentina</option><option value="bra" '+(ligaVal.toLowerCase().indexOf('bra')>=0?'selected':'')+'>Brasil</option><option value="eng" '+(ligaVal.toLowerCase().indexOf('eng')>=0?'selected':'')+'>Premier</option><option value="esp" '+(ligaVal.toLowerCase().indexOf('esp')>=0?'selected':'')+'>España</option><option value="ita" '+(ligaVal.toLowerCase().indexOf('ita')>=0?'selected':'')+'>Italia</option></select><input id="topDateFrom" type="date" class="search-date" title="Desde"><input id="topDateTo" type="date" class="search-date" title="Hasta"></div><div class="search-actions"><button id="topSearchBtn" class="btn-search">Buscar</button><button id="topClearBtn" class="btn-clear">Limpiar</button><span id="searchCountBadge" class="search-badge"></span></div><div class="search-tip">Tip: America = toda su temporada. Base: '+allMatches.length+' partidos</div></div></div></div><div id="searchResults" class="search-results-full" style="width:100%;display:block;clear:both;margin-top:20px"></div>';
+        let html='<div id="searchFilterWrapper" class="search-filter-wrapper" style="width:100%;display:block;margin-bottom:20px"><div id="searchBarContainer" class="card search-filter-card"><input id="topSearchInput" type="text" placeholder="Buscar: América, Atlas, Pumas, Liga MX..." value="'+esc(q)+'" class="search-main-input"><div class="search-filters-grid"><select id="topLeagueSelect" class="search-select"><option value="all" '+(ligaVal==='all'?'selected':'')+'>Todas las ligas</option><option value="mex" '+(ligaVal.toLowerCase().indexOf('mex')>=0?'selected':'')+'>Liga MX</option><option value="arg" '+(ligaVal.toLowerCase().indexOf('arg')>=0?'selected':'')+'>Argentina</option><option value="bra" '+(ligaVal.toLowerCase().indexOf('bra')>=0?'selected':'')+'>Brasil</option><option value="eng" '+(ligaVal.toLowerCase().indexOf('eng')>=0?'selected':'')+'>Premier</option><option value="esp" '+(ligaVal.toLowerCase().indexOf('esp')>=0?'selected':'')+'>España</option><option value="ita" '+(ligaVal.toLowerCase().indexOf('ita')>=0?'selected':'')+'>Italia</option></select><input id="topDateFrom" type="date" class="search-date" title="Desde"><input id="topDateTo" type="date" class="search-date" title="Hasta"></div><div class="search-actions"><button id="topSearchBtn" class="btn-search">Buscar</button><button id="topClearBtn" class="btn-clear">Limpiar</button><span id="searchCountBadge" class="search-badge"></span></div><div class="search-tip">Tip: America = toda su temporada. Base: '+allMatches.length+' partidos | Global ✅ '+globalStats.ac+' ❌ '+globalStats.fa+' ('+globalStats.pct+'%)</div></div></div></div><div id="searchResults" class="search-results-full" style="width:100%;display:block;clear:both;margin-top:20px"></div>';
         $grid.innerHTML=html;
         setTimeout(function(){
           const topS=document.getElementById('topSearchInput');const topFrom=document.getElementById('topDateFrom');const topTo=document.getElementById('topDateTo');const topL=document.getElementById('topLeagueSelect');
@@ -100,19 +129,28 @@ function renderAll(){
         return;
       } else {updateSearchResultsOnly();return;}
     }
-    if(currentFilter==='analytics'){$grid.style.display=''; $grid.innerHTML='<div class="analytics-panel"><div class="section-title">📊 Estadísticas - '+allMatches.length+' partidos</div><div class="card">Base: '+allMatches.length+' partidos temporada</div></div>';return;}
+    if(currentFilter==='analytics'){
+      const s = calcStats(allMatches);
+      $grid.style.display=''; 
+      $grid.innerHTML='<div class="analytics-panel"><div class="section-title">📊 Estadísticas V116 - '+allMatches.length+' partidos</div><div class="card" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px"><div style="background:#0f2a1a;border:1px solid #1ee07a;padding:12px;border-radius:8px;text-align:center"><div style="font-size:24px;font-weight:900;color:#1ee07a">'+s.ac+'</div><div style="font-size:12px;color:#8aa0c8">ACERTÓ</div></div><div style="background:#2a1212;border:1px solid #ff6b6b;padding:12px;border-radius:8px;text-align:center"><div style="font-size:24px;font-weight:900;color:#ff6b6b">'+s.fa+'</div><div style="font-size:12px;color:#8aa0c8">FALLÓ</div></div><div style="background:#1a2a4a;border:1px solid #3a6ab5;padding:12px;border-radius:8px;text-align:center"><div style="font-size:24px;font-weight:900;color:#8ab4ff">'+s.pct+'%</div><div style="font-size:12px;color:#8aa0c8">ACIERTO</div></div></div><div class="card" style="margin-top:12px"><div class="meta">Base: '+allMatches.length+' partidos | Finalizados: '+s.fin+' | Poisson + ELO + team_stats REAL V116<br>Modelo: '+ (allMatches[0]?allMatches[0].source||'V116':'V116')+'</div></div></div>';
+      return;
+    }
     $grid.style.display=''; const g=groupByEstado(filtered);let html='';
-    if(currentFilter==='all'){html+='<div class="section-title">🇲🇽 Partidos del día '+getTodayMX()+' ('+filtered.length+') - Poisson + ELO - Base '+allMatches.length+'</div>';}
-    else if(currentFilter==='top'){html+='<div class="section-title">★ Top Picks ('+filtered.length+')</div>';}
-    else if(currentFilter==='aciertos'){html+='<div class="section-title">✅ Aciertos ('+filtered.length+')</div>';$grid.innerHTML=html+'<div class="cards-grid">'+filtered.map(cardA).join('')+'</div>';return;}
-    else if(currentFilter==='fallos'){html+='<div class="section-title">❌ Fallos ('+filtered.length+')</div>';$grid.innerHTML=html+'<div class="cards-grid">'+filtered.map(cardA).join('')+'</div>';return;}
+    if(currentFilter==='all'){
+      html+='<div class="section-title" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px"><span>🇲🇽 Partidos del día '+getTodayMX()+' ('+filtered.length+') - Base '+allMatches.length+'</span><span style="font-size:12px;color:#8ab4ff">Global: ✅ '+globalStats.ac+' ❌ '+globalStats.fa+' ('+globalStats.pct+'%) | Filtro: ✅ '+filteredStats.ac+' ❌ '+filteredStats.fa+' ('+filteredStats.pct+'%)</span></div>';
+    }
+    else if(currentFilter==='top'){
+      html+='<div class="section-title" style="display:flex;justify-content:space-between"><span>★ Top Picks ('+filtered.length+')</span><span style="font-size:12px">✅ '+filteredStats.ac+' ❌ '+filteredStats.fa+' ('+filteredStats.pct+'%)</span></div>';
+    }
+    else if(currentFilter==='aciertos'){html+='<div class="section-title">✅ Aciertos ('+filtered.length+' / '+globalStats.fin+' - '+filteredStats.pct+'% global)</div>';$grid.innerHTML=html+'<div class="cards-grid">'+filtered.map(cardA).join('')+'</div>';return;}
+    else if(currentFilter==='fallos'){html+='<div class="section-title">❌ Fallos ('+filtered.length+' / '+globalStats.fin+' - '+(100 - parseFloat(globalStats.pct)).toFixed(1)+'% global)</div>';$grid.innerHTML=html+'<div class="cards-grid">'+filtered.map(cardA).join('')+'</div>';return;}
     else if(currentFilter==='progol'){$grid.innerHTML=renderProgolReal();return;}
-    else if(currentFilter==='combinada'){html+='<div class="section-title">∽ Combinadas ('+filtered.length+')</div>';$grid.innerHTML=html+'<div class="cards-grid">'+filtered.slice(0,20).map(cardA).join('')+'</div>';return;}
-    else {html+='<div class="section-title">'+esc(currentFilter)+' ('+filtered.length+') - Temporada completa</div>';}
+    else if(currentFilter==='combinada'){html+='<div class="section-title">∽ Combinadas ('+filtered.length+') - ✅ '+filteredStats.ac+' ❌ '+filteredStats.fa+'</div>';$grid.innerHTML=html+'<div class="cards-grid">'+filtered.slice(0,20).map(cardA).join('')+'</div>';return;}
+    else {html+='<div class="section-title" style="display:flex;justify-content:space-between"><span>'+esc(currentFilter)+' ('+filtered.length+')</span><span style="font-size:12px">✅ '+filteredStats.ac+' ❌ '+filteredStats.fa+' ('+filteredStats.pct+'%)</span></div>';}
     if(g.enJuego.length>0)html+=renderSection('🔴 En Juego ('+g.enJuego.length+')',g.enJuego);
     if(g.programados.length>0)html+=renderSection('⏰ Programados ('+g.programados.length+')',g.programados);
     if(g.finalizados.length>0)html+=renderSection('✅ Finalizados ('+g.finalizados.length+')',g.finalizados);
     if(g.enJuego.length===0&&g.programados.length===0&&g.finalizados.length===0){if(filtered.length>0)html+='<div class="cards-grid">'+filtered.map(cardA).join('')+'</div>';else html+='<div class="card"><div class="meta">No hay partidos para '+getTodayMX()+'. Base: '+allMatches.length+' partidos. Usa Buscar.</div></div>';}
-    html+='<div class="section-title">📊 Transparencia</div><div class="card"><div class="meta">Probabilidad != recomendación segura. Σ 1X2 ~100% validado.</div></div>';$grid.innerHTML=html;
+    html+='<div class="section-title">📊 Transparencia V116</div><div class="card"><div class="meta">Global: '+allMatches.length+' partidos | Finalizados: '+globalStats.fin+' | ✅ '+globalStats.ac+' Acertó | ❌ '+globalStats.fa+' Falló | '+globalStats.pct+'% acierto<br>Filtro actual: '+filtered.length+' partidos | ✅ '+filteredStats.ac+' | ❌ '+filteredStats.fa+' | '+filteredStats.pct+'%<br>Probabilidad != recomendación segura. Σ 1X2 ~100% validado. Modelo V116 REAL team_stats.</div></div>';$grid.innerHTML=html;
   }catch(e){log('RENDER ERROR: '+e.message,'err');const $grid=document.getElementById('grid');if($grid) $grid.innerHTML='<div class="card"><div class="meta" style="color:#ff6b6b">Error: '+esc(e.message)+'</div></div>';}
 }
