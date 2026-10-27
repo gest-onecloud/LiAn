@@ -599,7 +599,168 @@ class Handler(BaseHTTPRequestHandler):
             return
 
 
+
+        if parsed.path == "/api/supabase/calc-team-stats":
+            # Calcula ataque/defensa real desde matches y lo guarda en team_stats
+            try:
+                from supabase import create_client
+                supa_url = os.environ.get("SUPABASE_URL")
+                supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
+                
+                if not supa_url or not supa_key:
+                    self.send_response(500)
+                    self.send_header("Content-Type","application/json")
+                    _cors(self)
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "Faltan env vars Supabase"}).encode())
+                    return
+                
+                client = create_client(supa_url, supa_key)
+                
+                # 1. Traer todos los partidos finalizados con marcador
+                res = client.table('matches').select('*').not_.is_('home_score', 'null').not_.is_('away_score', 'null').order('date', desc=False).limit(5000).execute()
+                finished = res.data if res.data else []
+                
+                from collections import defaultdict, deque
+                from datetime import datetime
+                
+                def parse_date(m):
+                    try:
+                        return datetime.fromisoformat(str(m.get('date',''))[:10])
+                    except:
+                        return datetime.min
+                
+                finished.sort(key=parse_date)
+                
+                stats = defaultdict(lambda: {"gf":0, "ga":0, "mp":0, "w":0, "d":0, "l":0, "pts":0, "form":deque(maxlen=5), "league": ""})
+                
+                for m in finished:
+                    home = str(m.get('home','')).strip()
+                    away = str(m.get('away','')).strip()
+                    if not home or not away:
+                        continue
+                    try:
+                        hs = int(m.get('home_score'))
+                        aw = int(m.get('away_score'))
+                    except:
+                        continue
+                    
+                    league = str(m.get('league_code','') or m.get('league','') or 'global')
+                    
+                    # Home
+                    stats[home]["gf"] += hs
+                    stats[home]["ga"] += aw
+                    stats[home]["mp"] += 1
+                    stats[home]["league"] = league
+                    # Away
+                    stats[away]["gf"] += aw
+                    stats[away]["ga"] += hs
+                    stats[away]["mp"] += 1
+                    if not stats[away]["league"]:
+                        stats[away]["league"] = league
+                    
+                    if hs > aw:
+                        stats[home]["w"] += 1
+                        stats[home]["pts"] += 3
+                        stats[away]["l"] += 1
+                        stats[home]["form"].append("W")
+                        stats[away]["form"].append("L")
+                    elif hs == aw:
+                        stats[home]["d"] += 1
+                        stats[away]["d"] += 1
+                        stats[home]["pts"] += 1
+                        stats[away]["pts"] += 1
+                        stats[home]["form"].append("D")
+                        stats[away]["form"].append("D")
+                    else:
+                        stats[home]["l"] += 1
+                        stats[away]["w"] += 1
+                        stats[away]["pts"] += 3
+                        stats[home]["form"].append("L")
+                        stats[away]["form"].append("W")
+                
+                # 2. Limpiar team_stats
+                try:
+                    client.table('team_stats').delete().gt('id', 0).execute()
+                    print('[calc-team-stats] Tabla team_stats limpiada')
+                except Exception as e_del:
+                    print(f'[calc-team-stats] Error limpiando: {e_del}')
+                    try:
+                        client.table('team_stats').delete().neq('team', 'IMPOSSIBLE_XYZ').execute()
+                    except:
+                        pass
+                
+                # 3. Calcular promedios globales para strength
+                all_gf = sum(s["gf"] for s in stats.values())
+                all_mp = sum(s["mp"] for s in stats.values())
+                avg_league_gf = (all_gf / all_mp) if all_mp>0 else 1.2
+                
+                rows = []
+                for team, s in stats.items():
+                    mp = max(1, s["mp"])
+                    avg_for = s["gf"] / mp
+                    avg_against = s["ga"] / mp
+                    # Attack strength = avg_for / avg_league
+                    attack_str = avg_for / max(0.1, avg_league_gf)
+                    defense_str = avg_against / max(0.1, avg_league_gf)
+                    form_str = "-".join(list(s["form"])) if s["form"] else ""
+                    pts_last5 = sum(3 if x=="W" else 1 if x=="D" else 0 for x in s["form"])
+                    
+                    rows.append({
+                        "team": team,
+                        "league_code": "global",  # Usar global para evitar UNIQUE conflict por liga
+                        "matches_played": s["mp"],
+                        "goals_for": s["gf"],
+                        "goals_against": s["ga"],
+                        "avg_goals_for": round(avg_for, 3),
+                        "avg_goals_against": round(avg_against, 3),
+                        "attack_strength": round(attack_str, 3),
+                        "defense_strength": round(defense_str, 3),
+                        "form_last5": form_str,
+                        "points_last5": pts_last5,
+                        "last_update": datetime.now().strftime('%Y-%m-%d')
+                    })
+                
+                # Insertar en lotes de 100
+                inserted = 0
+                for i in range(0, len(rows), 100):
+                    batch = rows[i:i+100]
+                    try:
+                        client.table('team_stats').insert(batch).execute()
+                        inserted += len(batch)
+                    except Exception as e_batch:
+                        print(f"[calc-team-stats] Batch {i//100} error: {e_batch}, uno por uno")
+                        for single in batch:
+                            try:
+                                client.table('team_stats').insert(single).execute()
+                                inserted += 1
+                            except Exception as e_single:
+                                print(f"[calc-team-stats] Error {single.get('team')}: {e_single}")
+                
+                self.send_response(200)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "status": "team_stats_calculated",
+                    "finished_matches": len(finished),
+                    "teams_with_stats": len(stats),
+                    "inserted": inserted,
+                    "avg_league_gf": round(avg_league_gf,3),
+                    "sample": sorted([(t, s["gf"], s["ga"], s["mp"]) for t,s in list(stats.items())[:10], ], key=lambda x: x[1], reverse=True)[:10]
+                }).encode())
+                
+            except Exception as e:
+                import traceback
+                self.send_response(500)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e), "trace": traceback.format_exc()[:2000]}).encode())
+            return
+
         if parsed.path == "/api/supabase/backfill-reset":
+
             # Fuerza reset del backfill si se quedo pegado
             try:
                 from backend.services.backfill import backfill_state
