@@ -380,6 +380,34 @@ class Handler(BaseHTTPRequestHandler):
 
 
 
+
+        if parsed.path == "/api/supabase/backfill-reset":
+            # Fuerza reset del backfill si se quedo pegado
+            try:
+                from backend.services.backfill import backfill_state
+                backfill_state["running"] = False
+                backfill_state["progress"] = "Reseteado manualmente"
+                backfill_state["result"] = None
+                backfill_state["started_at"] = None
+                
+                self.send_response(200)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "status": "reset_ok",
+                    "message": "Backfill reseteado, ya puedes lanzar nuevo backfill-all"
+                }).encode())
+            except Exception as e:
+                import traceback
+                self.send_response(500)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({"error":str(e)}).encode())
+            return
+
+
         if parsed.path == "/api/supabase/backfill-all":
             # Inicia backfill completo 15 ligas x 730 dias en background
             try:
