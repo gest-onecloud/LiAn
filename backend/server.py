@@ -47,7 +47,7 @@ else:
     else:
         print("[server] Supabase lib no disponible, usando SQLite")
 
-model = Model()
+model = Model(repo=repo if 'repo' in locals() else None)
 
 # PROGOL ULTRA SEGURO - embebido, no requiere progol_sync.py
 PROGOL_FALLBACK = {
@@ -379,6 +379,34 @@ class Handler(BaseHTTPRequestHandler):
             return
 
 
+
+
+
+        if parsed.path == "/api/model/reload":
+            # Recarga el modelo con historial real desde Supabase
+            try:
+                from backend.core.model import Model as ModelClass
+                global model
+                model = ModelClass(repo=repo)
+                self.send_response(200)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "status": "reloaded",
+                    "version": model.VERSION,
+                    "history_loaded": model.history_loaded,
+                    "history_count": model.history_count,
+                    "teams_with_elo": len(model.elo) if model.history_loaded else 0
+                }).encode())
+            except Exception as e:
+                import traceback
+                self.send_response(500)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({"error":str(e),"trace":traceback.format_exc()[:1000]}).encode())
+            return
 
 
         if parsed.path == "/api/supabase/backfill-reset":
