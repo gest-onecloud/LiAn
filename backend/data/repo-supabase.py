@@ -71,38 +71,72 @@ class RepoSupabase:
             count+=1
         self.conn.commit()
 
-        # 2. Supabase (historico que crece)
+        # 2. Supabase (historico que crece) - FIX con validacion y logs detallados
+        supabase_inserted = 0
         if self.supabase:
             try:
                 rows = []
                 for m in unique:
-                    d = m.get('date','')
-                    lc = (m.get('league_code') or 'others').lower()
-                    h = (m.get('home') or 'local')
-                    aw = (m.get('away') or 'visita')
-                    mid = f"{d}_{lc}_{h}_{aw}".lower().replace(' ','_')
+                    # Validar fecha - si no hay fecha, saltar para no romper batch
+                    d_raw = m.get('date','')
+                    if not d_raw or not isinstance(d_raw, str):
+                        continue
+                    # Limpiar fecha: solo YYYY-MM-DD
+                    d_clean = d_raw.strip()[:10]
+                    if len(d_clean) != 10 or d_clean.count('-') != 2:
+                        continue
+                    
+                    lc = (m.get('league_code') or 'others').lower().strip()
+                    h = (m.get('home') or 'local').strip()
+                    aw = (m.get('away') or 'visita').strip()
+                    if not h or not aw:
+                        continue
+                    
+                    mid = f"{d_clean}_{lc}_{h}_{aw}".lower().replace(' ','_')
                     mid = re.sub(r'[^a-z0-9_]+', '_', mid)
+                    # Limitar id a 200 chars max
+                    if len(mid) > 200:
+                        mid = mid[:200]
+                    
                     rows.append({
                         "id": mid,
-                        "date": m.get('date'),
-                        "time": m.get('time',''),
-                        "home": m.get('home'),
-                        "away": m.get('away'),
-                        "league": m.get('league',''),
-                        "league_code": m.get('league_code',''),
-                        "status": m.get('status','NS'),
-                        "estado": m.get('estado','PROGRAMADO'),
+                        "date": d_clean,
+                        "time": str(m.get('time',''))[:10],
+                        "home": h[:100],
+                        "away": aw[:100],
+                        "league": str(m.get('league',''))[:100],
+                        "league_code": lc[:50],
+                        "status": str(m.get('status','NS'))[:20],
+                        "estado": str(m.get('estado','PROGRAMADO'))[:20],
                         "home_score": m.get('home_score'),
                         "away_score": m.get('away_score'),
-                        "score": m.get('score')
+                        "score": str(m.get('score',''))[:20] if m.get('score') else None
                     })
-                # upsert en lotes de 100
-                for i in range(0, len(rows), 100):
-                    batch = rows[i:i+100]
-                    self.supabase.table('matches').upsert(batch, on_conflict='id').execute()
-                print(f"[supabase] Upsert {len(rows)} partidos historico")
+                
+                # upsert en lotes de 50 (mas seguro)
+                for i in range(0, len(rows), 50):
+                    batch = rows[i:i+50]
+                    try:
+                        res = self.supabase.table('matches').upsert(batch, on_conflict='id').execute()
+                        supabase_inserted += len(batch)
+                    except Exception as e_batch:
+                        # Si falla batch, intentar uno por uno para identificar malos
+                        print(f"[supabase] batch {i//50} error: {e_batch}, intentando uno por uno")
+                        for single in batch:
+                            try:
+                                self.supabase.table('matches').upsert(single, on_conflict='id').execute()
+                                supabase_inserted += 1
+                            except Exception as e_single:
+                                print(f"[supabase] single error id={single.get('id')}: {e_single}")
+                
+                print(f"[supabase] Upsert OK: {supabase_inserted}/{len(rows)} partidos historico")
             except Exception as e:
-                print(f"[supabase] upsert error: {e}")
+                import traceback
+                print(f"[supabase] upsert error general: {e}")
+                print(traceback.format_exc()[:1000])
+        else:
+            print("[supabase] No hay cliente supabase, solo SQLite")
+        
         return count
 
     def get_by_league(self, league_code, limit=500):
@@ -131,16 +165,28 @@ class RepoSupabase:
         return [dict(r) for r in cur.fetchall()]
 
     def count_all(self):
+        sqlite_count = 0
+        try:
+            cur = self.conn.cursor()
+            cur.execute("SELECT COUNT(*) as c FROM matches")
+            sqlite_count = cur.fetchone()['c']
+        except:
+            pass
+        
         if self.supabase:
             try:
                 res = self.supabase.table('matches').select('id', count='exact').limit(1).execute()
                 if res.count is not None:
-                    return res.count
-            except:
-                pass
-        cur = self.conn.cursor()
-        cur.execute("SELECT COUNT(*) as c FROM matches")
-        return cur.fetchone()['c']
+                    # Devolver el maximo entre ambos, para no ocultar datos
+                    supa_count = res.count
+                    if supa_count == 0 and sqlite_count > 0:
+                        print(f"[supabase] count_all: Supabase=0 pero SQLite={sqlite_count}, devolviendo SQLite para no ocultar")
+                        return sqlite_count
+                    return max(supa_count, sqlite_count) if supa_count > 0 else sqlite_count
+            except Exception as e:
+                print(f"[supabase] count_all error: {e}, devolviendo SQLite {sqlite_count}")
+        
+        return sqlite_count
 
     def get_by_league_name(self, name_part, limit=500):
         if self.supabase:
