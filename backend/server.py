@@ -47,7 +47,11 @@ else:
     else:
         print("[server] Supabase lib no disponible, usando SQLite")
 
-model = Model(repo=repo if 'repo' in locals() else None)
+try:
+    model = Model(repo=repo if 'repo' in locals() else None)
+except Exception as e:
+    print(f"[model] Error cargando con repo, fallback sin repo: {e}")
+    model = Model()
 
 # PROGOL ULTRA SEGURO - embebido, no requiere progol_sync.py
 PROGOL_FALLBACK = {
@@ -386,18 +390,27 @@ class Handler(BaseHTTPRequestHandler):
             # Recarga el modelo con historial real desde Supabase
             try:
                 from backend.core.model import Model as ModelClass
-                global model
-                model = ModelClass(repo=repo)
+                # Recargar modelo global (sin usar keyword global dentro de if, asignar directo al modulo)
+                import backend.server as server_module
+                new_model = ModelClass(repo=repo)
+                # Actualizar variable global del modulo
+                globals()['model'] = new_model
+                # Tambien actualizar en server_module si existe
+                try:
+                    server_module.model = new_model
+                except:
+                    pass
+                model_local = new_model
                 self.send_response(200)
                 self.send_header("Content-Type","application/json")
                 _cors(self)
                 self.end_headers()
                 self.wfile.write(json.dumps({
                     "status": "reloaded",
-                    "version": model.VERSION,
-                    "history_loaded": model.history_loaded,
-                    "history_count": model.history_count,
-                    "teams_with_elo": len(model.elo) if model.history_loaded else 0
+                    "version": model_local.VERSION,
+                    "history_loaded": model_local.history_loaded,
+                    "history_count": model_local.history_count,
+                    "teams_with_elo": len(model_local.elo) if model_local.history_loaded else 0
                 }).encode())
             except Exception as e:
                 import traceback
