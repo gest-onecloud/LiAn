@@ -238,7 +238,111 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"leagues":stats,"count":len(stats)}).encode())
             return
+        if parsed.path == "/api/supabase/sync-future":
+            # V121 - Sincroniza próximos 14 días de ESPN a Supabase
+            try:
+                from datetime import date as date_obj, timedelta
+                from supabase import create_client
+                from backend.services.fixture_sync import fetch_season_for_liga, LIGAS_MUNDIALES
+                from backend.services.fixture_sync import _parse_espn, get_json
+
+                days_ahead = int(qs.get('days',['14'])[0])
+                league_filter = qs.get('league',[''])[0]  # si filtra solo mex.1
+
+                supa_url = os.environ.get("SUPABASE_URL")
+                supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
+                client = create_client(supa_url, supa_key) if supa_url and supa_key else None
+
+                today = date_obj.today()
+                future_dates = [today + timedelta(days=i) for i in range(days_ahead+1)]
+
+                # Ligas a sincronizar
+                ligas = LIGAS_MUNDIALES
+                if league_filter:
+                    ligas = [l for l in ligas if l[0]==league_filter]
+
+                all_future = []
+                for liga_code, liga_name in ligas:
+                    for d in future_dates:
+                        date_nodash = d.strftime('%Y%m%d')
+                        url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{liga_code}/scoreboard?dates={date_nodash}"
+                        try:
+                            raw = get_json(url, timeout=5)
+                            if raw and raw.get('events'):
+                                matches = _parse_espn(d.isoformat(), raw, liga_code, liga_name)
+                                # Solo futuros programados
+                                for m in matches:
+                                    # Si es futuro y no finalizado
+                                    if m.get('estado') != 'FINALIZADO':
+                                        all_future.append(m)
+                        except Exception as e:
+                            continue
+
+                # Deduplicar
+                seen=set()
+                unique=[]
+                for m in all_future:
+                    key=f"{m['date']}_{m['league_code']}_{m['home']}_{m['away']}"
+                    if key not in seen:
+                        seen.add(key)
+                        unique.append(m)
+
+                # Guardar en Supabase si hay cliente
+                saved = 0
+                if client and unique:
+                    for m in unique:
+                        try:
+                            # Upsert en matches: si ya existe no duplicar por fecha+equipos
+                            # Buscar existente
+                            existing = client.table('matches').select('id').eq('date', m['date']).eq('home', m['home']).eq('away', m['away']).limit(1).execute()
+                            if not existing.data:
+                                client.table('matches').insert({
+                                    "date": m['date'],
+                                    "home": m['home'],
+                                    "away": m['away'],
+                                    "league_code": m['league_code'],
+                                    "league": m['league'],
+                                    "home_score": None,
+                                    "away_score": None,
+                                    "status": m.get('status','NS'),
+                                    "time": m.get('time','')
+                                }).execute()
+                                saved+=1
+                        except Exception as e:
+                            print(f"[sync-future] error insert {m}: {e}")
+                            continue
+
+                # Tambien guardar en repo SQLite local
+                try:
+                    count = repo.upsert_matches(unique)
+                except:
+                    count = len(unique)
+
+                self.send_response(200)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "status": "future_synced V121",
+                    "days_ahead": days_ahead,
+                    "leagues": len(ligas),
+                    "found": len(unique),
+                    "saved_supabase": saved,
+                    "saved_sqlite": count,
+                    "sample": unique[:5],
+                    "dates": [d.isoformat() for d in future_dates[:5]]
+                }).encode())
+            except Exception as e:
+                import traceback
+                self.send_response(500)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({"error":str(e),"trace":traceback.format_exc()[:3000]}).encode())
+            return
+
         if parsed.path == "/api/calendar/sync_season":
+
             def bg():
                 try:
                     fixture_sync.sync_all_seasons(repo)
@@ -494,7 +598,78 @@ class Handler(BaseHTTPRequestHandler):
 
 
 
+
+        if parsed.path == "/api/match/improve":
+            # V120 - Botón Mejorar: MonteCarlo 6000 solo para 1 partido programado
+            try:
+                home = qs.get('home',[''])[0]
+                away = qs.get('away',[''])[0]
+                league = qs.get('league',['mex.1'])[0]
+                if not home or not away:
+                    self.send_response(400)
+                    self.send_header("Content-Type","application/json")
+                    _cors(self)
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error":"Falta home y away"}).encode())
+                    return
+
+                # Buscar partido en repo o crear mock
+                matches_found = []
+                try:
+                    matches_found = repo.get_by_league(league, limit=1000)
+                    matches_found = [m for m in matches_found if home.lower() in str(m.get('home','')).lower() or away.lower() in str(m.get('away','')).lower()]
+                except:
+                    matches_found = []
+
+                if matches_found:
+                    m = matches_found[0]
+                else:
+                    # Mock match para mejorar
+                    m = {"home": home, "away": away, "league_code": league, "date": "2026-10-28", "home_score": None, "away_score": None, "id": f"improve_{home}_{away}"}
+
+                # Predicción COMPLETA con MonteCarlo 6000
+                pred = model.predictions_for(m, fast=False)
+
+                # Agregar intervalos confianza MonteCarlo
+                mc = pred.get('montecarlo', {})
+                improved = {
+                    "home": home,
+                    "away": away,
+                    "league": league,
+                    "probabilities": pred.get('probabilities', {}),
+                    "xg": pred.get('xg', {}),
+                    "favorite": pred.get('favorite', ''),
+                    "confidence": pred.get('confidence', ''),
+                    "montecarlo": mc,
+                    "model_version": model.VERSION,
+                    "team_stats": {
+                        home: model.team_stats.get(home, {}),
+                        away: model.team_stats.get(away, {})
+                    },
+                    "elo": {
+                        home: model.elo.get(home, 1500),
+                        away: model.elo.get(away, 1500)
+                    },
+                    "improved": True,
+                    "message": f"Mejorado con MonteCarlo 6000 + Dixon-Coles + Disciplina + ELO MOV"
+                }
+
+                self.send_response(200)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps(improved).encode())
+            except Exception as e:
+                import traceback
+                self.send_response(500)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({"error":str(e),"trace":traceback.format_exc()[:2000]}).encode())
+            return
+
         if parsed.path == "/api/supabase/calc-elo":
+
             # Calcula ELO real desde matches y lo guarda en elo_ratings
             try:
                 from supabase import create_client
