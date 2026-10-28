@@ -912,19 +912,58 @@ class Handler(BaseHTTPRequestHandler):
 
 
 
+
         if parsed.path == "/api/supabase/discipline-sync":
-            # V119 Disciplina: estima tarjetas/faltas/arbitro
+            # V119.1 INLINE - sin import, estima disciplina determinista
             try:
-                try:
-                    from backend.services.discipline_sync import sync_discipline_from_api_fallback
-                except ModuleNotFoundError:
-                    from services.discipline_sync import sync_discipline_from_api_fallback
-                result = sync_discipline_from_api_fallback()
+                from supabase import create_client
+                from collections import defaultdict
+                import hashlib, random
+                from datetime import datetime
+
+                LEAGUE_AVG = {
+                    "mex.1": {"yellow": 2.1, "red": 0.12, "fouls": 13.5, "poss_home": 52},
+                    "esp.1": {"yellow": 2.4, "red": 0.15, "fouls": 14.2, "poss_home": 53},
+                    "eng.1": {"yellow": 1.8, "red": 0.08, "fouls": 11.8, "poss_home": 52},
+                    "ita.1": {"yellow": 2.3, "red": 0.14, "fouls": 14.5, "poss_home": 51},
+                    "default": {"yellow": 2.0, "red": 0.10, "fouls": 13.0, "poss_home": 52}
+                }
+
+                supa_url = os.environ.get("SUPABASE_URL")
+                supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
+                client = create_client(supa_url, supa_key)
+
+                res = client.table('matches').select('*').not_.is_('home_score', 'null').limit(500).order('date', desc=True).execute()
+                matches = res.data if res.data else []
+                to_update = [m for m in matches if not m.get('referee') or (m.get('home_yellow',0)==0 and m.get('away_yellow',0)==0)]
+
+                def estimate_disc(home, away, league):
+                    avg = LEAGUE_AVG.get(league, LEAGUE_AVG["default"])
+                    seed = int(hashlib.md5((home+away+league).encode()).hexdigest()[:8], 16)
+                    random.seed(seed)
+                    yh = max(0, round(avg["yellow"] * (0.7 + random.random()*0.6)))
+                    ya = max(0, round(avg["yellow"] * (0.7 + random.random()*0.6)))
+                    rh = 1 if random.random() < avg["red"] else 0
+                    ra = 1 if random.random() < avg["red"] else 0
+                    fh = max(5, round(avg["fouls"] * (0.8 + random.random()*0.4)))
+                    fa = max(5, round(avg["fouls"] * (0.8 + random.random()*0.4)))
+                    ph = max(35, min(70, avg["poss_home"] + random.randint(-8,8)))
+                    return {"home_yellow":yh,"away_yellow":ya,"home_red":rh,"away_red":ra,"home_fouls":fh,"away_fouls":fa,"home_possession":ph,"away_possession":100-ph,"referee":f"Auto-{league}","home_shots":random.randint(8,18),"away_shots":random.randint(6,16)}
+
+                updated = 0
+                for m in to_update[:200]:
+                    disc = estimate_disc(m.get('home',''), m.get('away',''), m.get('league_code','mex.1'))
+                    try:
+                        client.table('matches').update(disc).eq('id', m['id']).execute()
+                        updated += 1
+                    except:
+                        continue
+
                 self.send_response(200)
                 self.send_header("Content-Type","application/json")
                 _cors(self)
                 self.end_headers()
-                self.wfile.write(json.dumps(result).encode())
+                self.wfile.write(json.dumps({"status":"discipline_synced V119.1 INLINE","analyzed":len(matches),"updated":updated,"mode":"estimation_fallback","sample_league_avg":LEAGUE_AVG}).encode())
             except Exception as e:
                 import traceback
                 self.send_response(500)
@@ -935,18 +974,81 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/supabase/discipline-team":
-            # V119 Calcula disciplina por equipo
+            # V119.1 INLINE calcula disciplina por equipo
             try:
-                try:
-                    from backend.services.discipline_sync import calc_team_discipline_stats
-                except ModuleNotFoundError:
-                    from services.discipline_sync import calc_team_discipline_stats
-                result = calc_team_discipline_stats()
+                from supabase import create_client
+                from collections import defaultdict
+                supa_url = os.environ.get("SUPABASE_URL")
+                supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
+                client = create_client(supa_url, supa_key)
+
+                finished = []
+                offset = 0
+                while True:
+                    res = client.table('matches').select('*').not_.is_('home_score', 'null').range(offset, offset+999).execute()
+                    batch = res.data if res.data else []
+                    if not batch:
+                        break
+                    finished.extend(batch)
+                    if len(batch) < 1000:
+                        break
+                    offset += 1000
+                    if offset >= 3000:
+                        break
+
+                team_disc = defaultdict(lambda: {"mp":0, "yellow":0, "red":0, "fouls":0, "poss":0})
+                for m in finished:
+                    home = str(m.get('home','')).strip()
+                    away = str(m.get('away','')).strip()
+                    if not home or not away:
+                        continue
+                    hy = int(m.get('home_yellow',0) or 0)
+                    ay = int(m.get('away_yellow',0) or 0)
+                    hr = int(m.get('home_red',0) or 0)
+                    ar = int(m.get('away_red',0) or 0)
+                    hf = int(m.get('home_fouls',0) or 0)
+                    af = int(m.get('away_fouls',0) or 0)
+                    hp = float(m.get('home_possession',50) or 50)
+                    ap = float(m.get('away_possession',50) or 50)
+                    team_disc[home]["mp"]+=1
+                    team_disc[home]["yellow"]+=hy
+                    team_disc[home]["red"]+=hr
+                    team_disc[home]["fouls"]+=hf
+                    team_disc[home]["poss"]+=hp
+                    team_disc[away]["mp"]+=1
+                    team_disc[away]["yellow"]+=ay
+                    team_disc[away]["red"]+=ar
+                    team_disc[away]["fouls"]+=af
+                    team_disc[away]["poss"]+=ap
+
+                updated = 0
+                for team, data in team_disc.items():
+                    mp = max(1, data["mp"])
+                    avg_y = data["yellow"]/mp
+                    avg_r = data["red"]/mp
+                    avg_f = data["fouls"]/mp
+                    avg_p = data["poss"]/mp
+                    disc_idx = 1.0 + (avg_y - 2.0)*0.1 + avg_r*0.3 + (avg_f - 13)*0.02
+                    disc_idx = max(0.6, min(1.5, disc_idx))
+                    try:
+                        existing = client.table('team_stats').select('*').eq('team', team).limit(1).execute()
+                        if existing.data:
+                            client.table('team_stats').update({
+                                "avg_yellow": round(avg_y,2),
+                                "avg_red": round(avg_r,3),
+                                "avg_fouls": round(avg_f,1),
+                                "discipline_index": round(disc_idx,3),
+                                "avg_possession": round(avg_p,1)
+                            }).eq('team', team).execute()
+                            updated+=1
+                    except:
+                        continue
+
                 self.send_response(200)
                 self.send_header("Content-Type","application/json")
                 _cors(self)
                 self.end_headers()
-                self.wfile.write(json.dumps(result).encode())
+                self.wfile.write(json.dumps({"status":"team_discipline_calculated V119.1 INLINE","teams":len(team_disc),"updated":updated}).encode())
             except Exception as e:
                 import traceback
                 self.send_response(500)
@@ -957,6 +1059,8 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/supabase/backfill-reset":
+
+
 
 
 
