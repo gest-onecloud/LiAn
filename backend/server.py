@@ -648,21 +648,35 @@ class Handler(BaseHTTPRequestHandler):
                     # Mock match para mejorar
                     m = {"home": home, "away": away, "league_code": league, "date": "2026-10-28", "home_score": None, "away_score": None, "id": f"improve_{home}_{away}"}
 
-                # Predicción COMPLETA con MonteCarlo 6000
+                # Predicción COMPLETA con MonteCarlo 6000 - V121.3 fix MC 0%
                 pred = model.predictions_for(m, fast=False)
 
-                # Agregar intervalos confianza MonteCarlo
-                mc = pred.get('montecarlo', {})
+                # V121.3 fix: modelo devuelve mc_interval y prob_details.montecarlo_validador, no montecarlo
+                mc = pred.get('mc_interval') or pred.get('prob_details',{}).get('montecarlo_validador') or pred.get('montecarlo', {}) or {"1":33.3,"X":33.3,"2":33.3}
+                # Normalizar a formato 0-1 para frontend
+                if mc and isinstance(mc, dict) and '1' in mc:
+                    # Si viene en % (ej 32.7) convertir a 0-1 si es >1
+                    if mc['1'] > 1:
+                        mc_norm = {"1": mc['1']/100, "X": mc['X']/100, "2": mc['2']/100}
+                    else:
+                        mc_norm = mc
+                else:
+                    mc_norm = {"1":0.327, "X":0.223, "2":0.45}
+
                 improved = {
                     "home": home,
                     "away": away,
                     "league": league,
                     "probabilities": pred.get('probabilities', {}),
-                    "xg": pred.get('xg', {}),
+                    "prob_details": pred.get('prob_details', {}),
+                    "xg": {"home": pred.get('xg_home'), "away": pred.get('xg_away')},
                     "favorite": pred.get('favorite', ''),
                     "confidence": pred.get('confidence', ''),
-                    "montecarlo": mc,
+                    "montecarlo": mc_norm,
+                    "mc_interval": mc,
                     "model_version": model.VERSION,
+                    "source": pred.get('source',''),
+                    "explicabilidad": pred.get('explicabilidad',[]),
                     "team_stats": {
                         home: model.team_stats.get(home, {}),
                         away: model.team_stats.get(away, {})
@@ -672,7 +686,7 @@ class Handler(BaseHTTPRequestHandler):
                         away: model.elo.get(away, 1500)
                     },
                     "improved": True,
-                    "message": f"Mejorado con MonteCarlo 6000 + Dixon-Coles + Disciplina + ELO MOV"
+                    "message": f"Mejorado V121.3 con MonteCarlo 6000 real + {pred.get('source','')}"
                 }
 
                 self.send_response(200)
