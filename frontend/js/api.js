@@ -16,6 +16,7 @@ async function api(path){
 }
 
 const API = {
+  request: (path) => api(path),
   health: () => api('/api/health'),
   ligaMXSeason: (limit=500) => api(`/api/liga-mx/season?limit=${limit}`),
   calendarSeason: (limit=500) => api(`/api/calendar/season?limit=${limit}`),
