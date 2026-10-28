@@ -252,18 +252,32 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"status":"sync_temporada_iniciada","message":"Sincronizando 15 ligas temporada completa"}).encode())
             return
         if parsed.path == "/api/calendar/season":
-            limit = int(qs.get('limit',['500'])[0])
-            since = qs.get('since',[None])[0]
-            matches = repo.get_season(since_date=since, limit=limit)
-            payload = []
-            for m in matches:
-                pred = model.predictions_for(m, fast=False)
-                payload.append(pred)
-            self.send_response(200)
-            self.send_header("Content-Type","application/json")
-            _cors(self)
-            self.end_headers()
-            self.wfile.write(json.dumps({"matches":payload,"count":len(payload),"source":"DB Temporada Completa","dates":repo.get_dates()}).encode())
+            # V119.2 Fix Failed to fetch: fast=True + try/except
+            try:
+                limit = int(qs.get('limit',['500'])[0])
+                since = qs.get('since',[None])[0]
+                matches = repo.get_season(since_date=since, limit=limit)
+                payload = []
+                for m in matches:
+                    try:
+                        pred = model.predictions_for(m, fast=True)
+                        payload.append(pred)
+                    except Exception as e:
+                        print(f"[calendar season] pred error: {e}")
+                        continue
+                self.send_response(200)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({"matches":payload,"count":len(payload),"source":"DB Temporada Completa V119.2 fast","dates":repo.get_dates()}).encode())
+            except Exception as e:
+                import traceback
+                print(f"[calendar season error] {e}")
+                self.send_response(500)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({"error":str(e)}).encode())
             return
         if parsed.path == "/api/calendar/dates":
             dates = repo.get_dates()
@@ -359,60 +373,66 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"status":"sync_liga_mx_iniciada","message":"Sincronizando SOLO Liga MX temporada completa, 60-90 seg, luego /api/liga-mx/season"}).encode())
             return
         if parsed.path == "/api/liga-mx/season":
-            limit = int(qs.get('limit',['500'])[0])
-            # Intentar directo Supabase primero para tener dato real
-            matches = []
+            # V119.2 Fix Failed to fetch: usar fast=True para evitar timeout MonteCarlo 6000*500
             try:
-                from supabase import create_client
-                supa_url = os.environ.get("SUPABASE_URL")
-                supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
-                if supa_url and supa_key:
-                    supa_client = create_client(supa_url, supa_key)
-                    # Traer mex.1 directo
-                    res = supa_client.table('matches').select('*').eq('league_code', 'mex.1').order('date', desc=True).limit(limit).execute()
-                    if res.data and len(res.data) > 0:
-                        matches = res.data
-                        print(f"[Liga MX] Supabase directo: {len(matches)} partidos mex.1")
-            except Exception as e:
-                print(f"[Liga MX] Error Supabase directo: {e}")
-            
-            # Fallback a repo si Supabase directo no trae
-            if not matches:
-                matches = repo.get_by_league("mex.1", limit=limit)
-            if not matches:
-                matches = repo.get_by_league_name("Liga MX", limit=limit)
-            if not matches:
-                matches = repo.get_by_league_name("mex", limit=limit)
-            if not matches:
-                matches = repo.get_by_league_name("Mexico", limit=limit)
-            # Si hay menos de 20, traer todos desde Supabase directo
-            if len(matches) < 20:
-                print(f"[Liga MX] Solo {len(matches)} mex.1, devolviendo todos desde Supabase directo")
+                limit = int(qs.get('limit',['500'])[0])
+                matches = []
                 try:
                     from supabase import create_client
                     supa_url = os.environ.get("SUPABASE_URL")
                     supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
                     if supa_url and supa_key:
                         supa_client = create_client(supa_url, supa_key)
-                        res = supa_client.table('matches').select('*').order('date', desc=True).limit(limit).execute()
-                        if res.data:
+                        res = supa_client.table('matches').select('*').eq('league_code', 'mex.1').order('date', desc=True).limit(limit).execute()
+                        if res.data and len(res.data) > 0:
                             matches = res.data
-                except:
-                    pass
+                            print(f"[Liga MX] Supabase directo: {len(matches)} partidos mex.1")
+                except Exception as e:
+                    print(f"[Liga MX] Error Supabase directo: {e}")
+                
+                if not matches:
+                    matches = repo.get_by_league("mex.1", limit=limit)
+                if not matches:
+                    matches = repo.get_by_league_name("Liga MX", limit=limit)
+                if not matches:
+                    matches = repo.get_all(limit=limit)
+                
                 if len(matches) < 20:
-                    all_matches = repo.get_all(limit=limit)
-                    if len(all_matches) < 20:
-                        all_matches = repo.get_all(limit=1000)
-                    matches = all_matches if all_matches else matches
-            payload = []
-            for m in matches:
-                pred = model.predictions_for(m, fast=False)
-                payload.append(pred)
-            self.send_response(200)
-            self.send_header("Content-Type","application/json")
-            _cors(self)
-            self.end_headers()
-            self.wfile.write(json.dumps({"league":"mex.1","matches":payload,"count":len(payload),"source":f"Liga MX + fallback ({len(payload)} partidos) - Mexico" if len(payload)>0 else "Sin datos, sincroniza"}).encode())
+                    try:
+                        from supabase import create_client
+                        supa_url = os.environ.get("SUPABASE_URL")
+                        supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
+                        if supa_url and supa_key:
+                            supa_client = create_client(supa_url, supa_key)
+                            res = supa_client.table('matches').select('*').order('date', desc=True).limit(limit).execute()
+                            if res.data:
+                                matches = res.data
+                    except:
+                        pass
+                
+                # V119.2 Fix: fast=True para 500 partidos no hace MonteCarlo 6000 cada uno (timeout)
+                payload = []
+                for m in matches:
+                    try:
+                        pred = model.predictions_for(m, fast=True)
+                        payload.append(pred)
+                    except Exception as e:
+                        print(f"[Liga MX] pred error {m.get('id')}: {e}")
+                        continue
+
+                self.send_response(200)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({"league":"mex.1","matches":payload,"count":len(payload),"source":f"Liga MX V119.2 fast ({len(payload)} partidos)"}).encode())
+            except Exception as e:
+                import traceback
+                print(f"[Liga MX season error] {e}\n{traceback.format_exc()}")
+                self.send_response(500)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({"error":str(e),"trace":traceback.format_exc()[:1000]}).encode())
             return
         if parsed.path == "/api/liga-mx/fast":
             date = qs.get('date',[datetime.now().strftime('%Y-%m-%d')])[0]
