@@ -56,13 +56,21 @@ async function mejorarPartido(home, away, league, btn){
       const favEl = card.querySelector('.fav');
       if(favEl) favEl.innerHTML = '★ '+esc(data.favorite)+' <small>(MC6000)</small>';
       // MonteCarlo info
-      const mc = data.montecarlo;
+      const mc = data.montecarlo || data.mc_interval || (data.prob_details&&data.prob_details.montecarlo_validador);
       if(mc){
+        let mcL = (mc['1']||0); let mcX = (mc['X']||0); let mcV = (mc['2']||0);
+        // Si viene en % >1, no multiplicar x100
+        if(mcL<=1){mcL*=100; mcX*=100; mcV*=100;}
         let mcHtml = document.createElement('div');
         mcHtml.className = 'mc-info';
-        mcHtml.style.cssText = 'font-size:10px;color:#8ab4ff;margin-top:4px;background:#0a1a33;padding:4px;border-radius:4px';
-        mcHtml.innerHTML = '🎲 MC6000: L '+((mc['1']||0)*100).toFixed(0)+'% E '+((mc['X']||0)*100).toFixed(0)+'% V '+((mc['2']||0)*100).toFixed(0)+'% | ELO '+data.elo[home]+' vs '+data.elo[away];
-        card.querySelector('.card-bottom').appendChild(mcHtml);
+        mcHtml.style.cssText = 'font-size:10px;color:#8ab4ff;margin-top:4px;background:#0a1a33;padding:6px;border-radius:6px;line-height:1.3';
+        let expl = '';
+        if(data.explicabilidad && data.explicabilidad.length>0){
+          expl = '<br><small style="color:#8aa0c8">'+data.explicabilidad[0]+' | '+data.explicabilidad[1]+'</small>';
+        }
+        mcHtml.innerHTML = '🎲 MC6000: L '+mcL.toFixed(1)+'% E '+mcX.toFixed(1)+'% V '+mcV.toFixed(1)+'% | ELO '+Math.round(data.elo[home])+' vs '+Math.round(data.elo[away])+expl;
+        const bottom = card.querySelector('.card-bottom');
+        if(bottom && !bottom.querySelector('.mc-info')) bottom.appendChild(mcHtml);
       }
       btn.innerHTML = '✅ Mejorado';
       btn.className = 'badge badge-mejorado';
