@@ -17,7 +17,7 @@ except:
     HAS_YAML = False
 
 class Model:
-    VERSION = "V119 Disciplinary + AutoLearn 2859 + Dixon-Coles + Tarjetas - 330+330"
+    VERSION = "V122 RestDays Fatigue + Disciplinary + AutoLearn 2859 + Dixon-Coles - 330+330"
 
     def __init__(self, repo=None):
         self.weights = {"poisson_dc": 0.75, "elo_mov": 0.20, "forma_ema": 0.05}  # Aprendido: Poisson 75% es mejor (local 44% vs visita 31%)
@@ -311,6 +311,39 @@ class Model:
             "2": round((c2/total)*100,1),
         }
 
+
+    def _calc_rest_days(self, match_date_str, team_last_match_date_str):
+        """Calcula dias de descanso entre partidos"""
+        try:
+            from datetime import datetime
+            if not match_date_str or not team_last_match_date_str:
+                return 7  # default 7 dias si no hay dato
+            d1 = datetime.fromisoformat(str(match_date_str)[:10])
+            d2 = datetime.fromisoformat(str(team_last_match_date_str)[:10])
+            delta = (d1 - d2).days
+            return max(0, delta)
+        except:
+            return 7
+
+    def _rest_fatigue_factor(self, rest_days):
+        """Factor fatiga: <3 dias 0.82, 3-4 dias 0.90, 5-6 dias 0.96, 7+ dias 1.0, 10+ dias 0.98 leve oxido"""
+        if rest_days <= 0:
+            return {"attack": 0.82, "defense": 1.18, "label": f"{rest_days}d CRITICO", "prob_penalty": -8}
+        elif rest_days == 1:
+            return {"attack": 0.82, "defense": 1.18, "label": f"{rest_days}d EXTREMO", "prob_penalty": -8}
+        elif rest_days == 2:
+            return {"attack": 0.86, "defense": 1.12, "label": f"{rest_days}d FATIGA ALTA", "prob_penalty": -6}
+        elif rest_days == 3:
+            return {"attack": 0.90, "defense": 1.08, "label": f"{rest_days}d FATIGA MEDIA", "prob_penalty": -4}
+        elif rest_days == 4:
+            return {"attack": 0.94, "defense": 1.04, "label": f"{rest_days}d FATIGA LEVE", "prob_penalty": -2}
+        elif rest_days <= 6:
+            return {"attack": 0.97, "defense": 1.02, "label": f"{rest_days}d OK", "prob_penalty": -1}
+        elif rest_days <= 9:
+            return {"attack": 1.0, "defense": 1.0, "label": f"{rest_days}d OPTIMO", "prob_penalty": 0}
+        else:
+            return {"attack": 0.99, "defense": 1.01, "label": f"{rest_days}d OXIDO LEVE", "prob_penalty": -0.5}
+
     def predictions_for(self, match, fast=False):
         home = match.get('home','Local')
         away = match.get('away','Visita')
@@ -324,6 +357,30 @@ class Model:
         form_home = self._team_form_ema(home)
         form_away = self._team_form_ema(away)
         home_adv = self._get_home_adv(league_code, league)
+
+        # V122 - Rest days / Fatiga
+        home_rest_raw = match.get('home_rest_days')
+        away_rest_raw = match.get('away_rest_days')
+        home_last = match.get('home_last_date')
+        away_last = match.get('away_last_date')
+        match_date = match.get('date','')
+
+        if home_rest_raw is not None:
+            home_rest = int(home_rest_raw)
+        elif home_last:
+            home_rest = self._calc_rest_days(match_date, home_last)
+        else:
+            home_rest = 7
+
+        if away_rest_raw is not None:
+            away_rest = int(away_rest_raw)
+        elif away_last:
+            away_rest = self._calc_rest_days(match_date, away_last)
+        else:
+            away_rest = 7
+
+        rest_home_factor = self._rest_fatigue_factor(home_rest)
+        rest_away_factor = self._rest_fatigue_factor(away_rest)
 
         if home in self.team_stats and self.team_stats[home].get("mp",0) > 0:
             s_home = self.team_stats[home]
@@ -339,8 +396,8 @@ class Model:
             poss_factor_home = 0.9 + (poss_home - 50) * 0.01  # 60% posesion -> 1.0 factor
             poss_factor_away = 0.9 + (poss_away - 50) * 0.01
 
-            xg_home = round((s_home.get("avg_for", att_home) * 0.6 + (2 - s_away.get("avg_against", def_away)) * 0.4) * home_adv * disc_factor_home * poss_factor_home + form_home, 2)
-            xg_away = round((s_away.get("avg_for", att_away) * 0.6 + (2 - s_home.get("avg_against", def_home)) * 0.4) * (2 - home_adv + 1) /2 *0.92 * disc_factor_away * poss_factor_away + form_away, 2)
+            xg_home = round((s_home.get("avg_for", att_home) * 0.6 + (2 - s_away.get("avg_against", def_away)) * 0.4) * home_adv * disc_factor_home * poss_factor_home * rest_home_factor["attack"] + form_home, 2)
+            xg_away = round((s_away.get("avg_for", att_away) * 0.6 + (2 - s_home.get("avg_against", def_home)) * 0.4) * (2 - home_adv + 1) /2 *0.92 * disc_factor_away * poss_factor_away * rest_away_factor["attack"] + form_away, 2)
             xg_home = max(0.15, xg_home)
             xg_away = max(0.15, xg_away)
             xg_source = f"REAL team_stats + HomeAdv {home_adv} {mp_home}/{mp_away} pj"
@@ -363,10 +420,13 @@ class Model:
 
         diff = str_home - str_away
         elo_adj = diff * 20
+        # V122 - penalizacion fatiga en ELO: equipo cansado pierde prob
+        rest_penalty_home = rest_home_factor["prob_penalty"]
+        rest_penalty_away = rest_away_factor["prob_penalty"]
         prob_elo_mov = {
-            "1": max(5, min(85, prob_poisson_dc["1"] + elo_adj)),
-            "X": prob_poisson_dc["X"],
-            "2": max(5, min(85, prob_poisson_dc["2"] - elo_adj)),
+            "1": max(5, min(85, prob_poisson_dc["1"] + elo_adj + rest_penalty_home)),
+            "X": prob_poisson_dc["X"] - (rest_penalty_home + rest_penalty_away)/2 * -0.3,  # fatiga aumenta empate
+            "2": max(5, min(85, prob_poisson_dc["2"] - elo_adj + rest_penalty_away)),
         }
         s = prob_elo_mov["1"]+prob_elo_mov["X"]+prob_elo_mov["2"]
         prob_elo_mov = {k: round(v/s*100,1) for k,v in prob_elo_mov.items()}
@@ -475,6 +535,7 @@ class Model:
                 f"ELO MOV {home}={elo_home:.0f} vs {away}={elo_away:.0f} diff={elo_home-elo_away:.0f} src={self.elo_source}",
                 f"Ataque {home}={att_home:.2f} Def={def_home:.2f} Disc={s_home.get('discipline_index',1.0):.2f} Poss={s_home.get('avg_possession',50):.0f}% | {away} Att={att_away:.2f} Def={def_away:.2f} Disc={s_away.get('discipline_index',1.0):.2f} Poss={s_away.get('avg_possession',50):.0f}% HomeAdv={home_adv} src={self.team_stats_source}",
                 f"Forma EMA {home}={form_home:.3f} {away}={form_away:.3f}",
+                f"Descanso {home}={home_rest}d {rest_home_factor['label']} att={rest_home_factor['attack']:.2f} | {away}={away_rest}d {rest_away_factor['label']} att={rest_away_factor['attack']:.2f}",
                 f"MC validador 6000: 1={prob_mc_interval['1']}% X={prob_mc_interval['X']}% 2={prob_mc_interval['2']}%"
             ]
         else:
@@ -529,5 +590,11 @@ class Model:
             "attack_away": att_away,
             "defense_away": def_away,
             "home_adv": home_adv,
-            "mc_interval": prob_mc_interval
+            "mc_interval": prob_mc_interval,
+            "home_rest_days": home_rest,
+            "away_rest_days": away_rest,
+            "home_rest_label": rest_home_factor["label"],
+            "away_rest_label": rest_away_factor["label"],
+            "rest_factor_home": rest_home_factor,
+            "rest_factor_away": rest_away_factor
         }

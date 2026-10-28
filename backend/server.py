@@ -523,12 +523,55 @@ class Handler(BaseHTTPRequestHandler):
                 if not all_merged:
                     all_merged = matches_supabase or matches_sqlite or repo.get_all(limit=limit)
 
+                # V122 - Calcular dias descanso por equipo (para fatiga Pumas 3 dias Santos->Tigres)
+                from datetime import datetime
+                # Ordenar asc por fecha para rastrear ultimo partido
+                def parse_d(d):
+                    try:
+                        return datetime.fromisoformat(str(d)[:10])
+                    except:
+                        return datetime.min
+                sorted_for_rest = sorted(all_merged, key=lambda x: parse_d(x.get('date','')))
+                last_match_by_team = {}
+                rest_enriched = []
+                for m in sorted_for_rest:
+                    home = str(m.get('home','')).strip()
+                    away = str(m.get('away','')).strip()
+                    date_str = str(m.get('date',''))[:10]
+                    cur_date = parse_d(date_str)
+                    # Calcular descanso
+                    home_last = last_match_by_team.get(home)
+                    away_last = last_match_by_team.get(away)
+                    home_rest = None
+                    away_rest = None
+                    if home_last:
+                        delta = (cur_date - parse_d(home_last)).days
+                        home_rest = delta
+                    if away_last:
+                        delta = (cur_date - parse_d(away_last)).days
+                        away_rest = delta
+                    # Enriquecer match con rest days
+                    m_enriched = dict(m)
+                    if home_rest is not None:
+                        m_enriched['home_rest_days'] = home_rest
+                        m_enriched['home_last_date'] = home_last
+                    if away_rest is not None:
+                        m_enriched['away_rest_days'] = away_rest
+                        m_enriched['away_last_date'] = away_last
+                    rest_enriched.append(m_enriched)
+                    # Actualizar ultimo partido
+                    last_match_by_team[home] = date_str
+                    last_match_by_team[away] = date_str
+
+                # Usar enriched para payload pero mantener orden desc para frontend (mas reciente primero)
+                all_merged = sorted(rest_enriched, key=lambda x: parse_d(x.get('date','')), reverse=True)
+
                 # Separar programados vs finalizados para log
                 prog = [m for m in all_merged if m.get('home_score') is None or str(m.get('estado','')).upper()=='PROGRAMADO' or str(m.get('status','')).upper().find('SCHED')>=0]
                 fin = [m for m in all_merged if m not in prog]
-                print(f"[Liga MX V121.1] Merge: {len(all_merged)} total = {len(prog)} programados + {len(fin)} finalizados")
+                print(f"[Liga MX V121.1] Merge: {len(all_merged)} total = {len(prog)} programados + {len(fin)} finalizados | RestDays calc {len(last_match_by_team)} equipos")
 
-                # V119.2 fast=True para evitar timeout MC6000
+                # V119.2 fast=True para evitar timeout MC6000 + V122 rest days
                 payload = []
                 for m in all_merged[:limit]:
                     try:
@@ -648,7 +691,49 @@ class Handler(BaseHTTPRequestHandler):
                     # Mock match para mejorar
                     m = {"home": home, "away": away, "league_code": league, "date": "2026-10-28", "home_score": None, "away_score": None, "id": f"improve_{home}_{away}"}
 
-                # Predicción COMPLETA con MonteCarlo 6000 - V121.3 fix MC 0%
+                # V122 - Calcular descanso para mejorar
+                try:
+                    from datetime import datetime
+                    def parse_d(d):
+                        try:
+                            return datetime.fromisoformat(str(d)[:10])
+                        except:
+                            return datetime.min
+                    # Buscar ultimos partidos de home y away en Supabase
+                    from supabase import create_client
+                    supa_url = os.environ.get("SUPABASE_URL")
+                    supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
+                    if supa_url and supa_key:
+                        supa_client = create_client(supa_url, supa_key)
+                        # Home ultimo
+                        rh = supa_client.table('matches').select('date').ilike('home', f'%{home}%').order('date', desc=True).limit(5).execute()
+                        ra = supa_client.table('matches').select('date').ilike('away', f'%{away}%').order('date', desc=True).limit(5).execute()
+                        # Simplificado: buscar por equipo exacto en cache local
+                        all_recent = repo.get_by_league(league, limit=500) if 'repo' in globals() else []
+                        last_home = None
+                        last_away = None
+                        m_date = parse_d(m.get('date','2026-10-28'))
+                        for rm in sorted(all_recent, key=lambda x: parse_d(x.get('date','')), reverse=True):
+                            if parse_d(rm.get('date','')) >= m_date:
+                                continue
+                            if not last_home and (home.lower() in str(rm.get('home','')).lower() or home.lower() in str(rm.get('away','')).lower()):
+                                last_home = rm.get('date')
+                            if not last_away and (away.lower() in str(rm.get('home','')).lower() or away.lower() in str(rm.get('away','')).lower()):
+                                last_away = rm.get('date')
+                            if last_home and last_away:
+                                break
+                        if last_home:
+                            m['home_last_date'] = last_home
+                            delta = (m_date - parse_d(last_home)).days
+                            m['home_rest_days'] = delta
+                        if last_away:
+                            m['away_last_date'] = last_away
+                            delta = (m_date - parse_d(last_away)).days
+                            m['away_rest_days'] = delta
+                except Exception as e_rest:
+                    print(f"[improve V122] rest calc error: {e_rest}")
+
+                # Predicción COMPLETA con MonteCarlo 6000 - V121.3 fix MC 0% + V122 rest
                 pred = model.predictions_for(m, fast=False)
 
                 # V121.3 fix: modelo devuelve mc_interval y prob_details.montecarlo_validador, no montecarlo
