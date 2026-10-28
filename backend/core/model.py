@@ -17,7 +17,7 @@ except:
     HAS_YAML = False
 
 class Model:
-    VERSION = "V122 RestDays Fatigue + Disciplinary + AutoLearn 2859 + Dixon-Coles - 330+330"
+    VERSION = "V122.2.2 RestDays Progresivo + Disciplinary + AutoLearn 2859 + Dixon-Coles - 330+330"
 
     def __init__(self, repo=None):
         self.weights = {"poisson_dc": 0.75, "elo_mov": 0.20, "forma_ema": 0.05}  # Aprendido: Poisson 75% es mejor (local 44% vs visita 31%)
@@ -326,23 +326,29 @@ class Model:
             return 7
 
     def _rest_fatigue_factor(self, rest_days):
-        """Factor fatiga: <3 dias 0.82, 3-4 dias 0.90, 5-6 dias 0.96, 7+ dias 1.0, 10+ dias 0.98 leve oxido"""
+        """V122.2 Oxido progresivo: cientificamente >14 dias detraining reduce ATP y performance explosiva"""
         if rest_days <= 0:
-            return {"attack": 0.82, "defense": 1.18, "label": f"{rest_days}d CRITICO", "prob_penalty": -8}
+            return {"attack": 0.80, "defense": 1.20, "label": f"{rest_days}d CRITICO", "prob_penalty": -8, "conf_penalty": 2, "tipo": "fatiga"}
         elif rest_days == 1:
-            return {"attack": 0.82, "defense": 1.18, "label": f"{rest_days}d EXTREMO", "prob_penalty": -8}
+            return {"attack": 0.82, "defense": 1.18, "label": f"{rest_days}d EXTREMO", "prob_penalty": -8, "conf_penalty": 2, "tipo": "fatiga"}
         elif rest_days == 2:
-            return {"attack": 0.86, "defense": 1.12, "label": f"{rest_days}d FATIGA ALTA", "prob_penalty": -6}
+            return {"attack": 0.86, "defense": 1.12, "label": f"{rest_days}d FATIGA ALTA", "prob_penalty": -6, "conf_penalty": 1, "tipo": "fatiga"}
         elif rest_days == 3:
-            return {"attack": 0.90, "defense": 1.08, "label": f"{rest_days}d FATIGA MEDIA", "prob_penalty": -4}
+            return {"attack": 0.90, "defense": 1.08, "label": f"{rest_days}d FATIGA MEDIA", "prob_penalty": -4, "conf_penalty": 1, "tipo": "fatiga"}
         elif rest_days == 4:
-            return {"attack": 0.94, "defense": 1.04, "label": f"{rest_days}d FATIGA LEVE", "prob_penalty": -2}
+            return {"attack": 0.94, "defense": 1.04, "label": f"{rest_days}d FATIGA LEVE", "prob_penalty": -2, "conf_penalty": 0, "tipo": "fatiga"}
         elif rest_days <= 6:
-            return {"attack": 0.97, "defense": 1.02, "label": f"{rest_days}d OK", "prob_penalty": -1}
+            return {"attack": 0.97, "defense": 1.02, "label": f"{rest_days}d OK", "prob_penalty": -1, "conf_penalty": 0, "tipo": "ok"}
         elif rest_days <= 9:
-            return {"attack": 1.0, "defense": 1.0, "label": f"{rest_days}d OPTIMO", "prob_penalty": 0}
+            return {"attack": 1.0, "defense": 1.0, "label": f"{rest_days}d OPTIMO", "prob_penalty": 0, "conf_penalty": 0, "tipo": "optimo"}
+        elif rest_days <= 13:
+            return {"attack": 0.97, "defense": 1.02, "label": f"{rest_days}d OXIDO LEVE", "prob_penalty": -1, "conf_penalty": 0, "tipo": "oxido_leve"}
+        elif rest_days <= 20:
+            return {"attack": 0.92, "defense": 1.06, "label": f"{rest_days}d OXIDO MEDIO", "prob_penalty": -3.5, "conf_penalty": 1, "tipo": "oxido_medio"}
+        elif rest_days <= 27:
+            return {"attack": 0.87, "defense": 1.10, "label": f"{rest_days}d OXIDO ALTO", "prob_penalty": -6, "conf_penalty": 2, "tipo": "oxido_alto"}
         else:
-            return {"attack": 0.99, "defense": 1.01, "label": f"{rest_days}d OXIDO LEVE", "prob_penalty": -0.5}
+            return {"attack": 0.82, "defense": 1.15, "label": f"{rest_days}d OXIDO CRITICO", "prob_penalty": -9, "conf_penalty": 2, "tipo": "oxido_critico"}
 
     def predictions_for(self, match, fast=False):
         home = match.get('home','Local')
@@ -474,6 +480,14 @@ class Model:
             fav = "Empate"
 
         diff_strength = abs(str_home - str_away)
+        # V122.2 - ajuste confianza por descanso: fatiga/oxido aumenta incertidumbre
+        rest_conf_penalty = rest_home_factor.get("conf_penalty",0) + rest_away_factor.get("conf_penalty",0)
+        # Si ambos con descanso extremo opuesto, penaliza extra
+        if (rest_home_factor.get("tipo") in ["fatiga","oxido_medio","oxido_alto","oxido_critico"] and 
+            rest_away_factor.get("tipo") in ["fatiga","oxido_medio","oxido_alto","oxido_critico"] and
+            rest_home_factor["tipo"] != rest_away_factor["tipo"]):
+            rest_conf_penalty += 1
+
         if self.history_loaded:
             min_mp = min(mp_home, mp_away) if mp_home>0 else 5
             if min_mp >= 10 and diff_strength > 0.2:
@@ -501,6 +515,19 @@ class Model:
                 confianza = "Limitada"
                 evidencia = 4
                 riesgo = "Alto"
+
+        # Aplicar penalizacion de confianza por descanso extremo
+        if rest_conf_penalty >= 2:
+            if confianza == "Alta":
+                confianza = "Media"
+            elif confianza == "Media":
+                confianza = "Limitada"
+            riesgo = "Alto" if riesgo != "Alto" else riesgo
+            evidencia = max(2, evidencia - 2)
+        elif rest_conf_penalty == 1:
+            if confianza == "Alta":
+                confianza = "Media"
+            evidencia = max(3, evidencia - 1)
 
         if evidencia >= 10:
             suf = "adecuada"
