@@ -786,14 +786,115 @@ class Handler(BaseHTTPRequestHandler):
             return
 
 
+
         if parsed.path == "/api/supabase/auto-learn":
-            # V118 Autoaprendizaje: aprende de errores
+            # V118.2 Autoaprendizaje INLINE - sin import externo para evitar ModuleNotFoundError en Render
             try:
+                from supabase import create_client
+                from collections import defaultdict
+                from datetime import datetime
+
+                supa_url = os.environ.get("SUPABASE_URL")
+                supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
+                if not supa_url or not supa_key:
+                    raise Exception("Faltan env vars Supabase")
+
+                client = create_client(supa_url, supa_key)
+
+                # Traer finalizados paginado
+                finished = []
+                offset = 0
+                batch_size = 1000
+                while True:
+                    res = client.table('matches').select('*').not_.is_('home_score', 'null').not_.is_('away_score', 'null').order('date', desc=True).range(offset, offset+batch_size-1).execute()
+                    batch = res.data if res.data else []
+                    if not batch:
+                        break
+                    finished.extend(batch)
+                    if len(batch) < batch_size:
+                        break
+                    offset += batch_size
+                    if offset >= 4000:
+                        break
+
+                by_league = defaultdict(lambda: {"total":0, "home_win":0, "draw":0, "away_win":0, "home_adv_real":1.0})
+                by_result = {"1":0, "X":0, "2":0}
+                dixon = {"0-0":0, "1-0":0, "0-1":0, "1-1":0, "other":0}
+
+                for m in finished:
+                    league = m.get('league_code','global') or 'global'
+                    hs = m.get('home_score')
+                    aw = m.get('away_score')
+                    if hs is None or aw is None:
+                        continue
+                    try:
+                        hs = int(hs); aw = int(aw)
+                    except:
+                        continue
+                    by_league[league]["total"] += 1
+                    if hs > aw:
+                        by_league[league]["home_win"] += 1
+                        by_result["1"] += 1
+                    elif hs == aw:
+                        by_league[league]["draw"] += 1
+                        by_result["X"] += 1
+                    else:
+                        by_league[league]["away_win"] += 1
+                        by_result["2"] += 1
+
+                    if hs==0 and aw==0:
+                        dixon["0-0"] += 1
+                    elif hs==1 and aw==0:
+                        dixon["1-0"] += 1
+                    elif hs==0 and aw==1:
+                        dixon["0-1"] += 1
+                    elif hs==1 and aw==1:
+                        dixon["1-1"] += 1
+                    else:
+                        dixon["other"] += 1
+
+                home_adv_learned = {}
+                for league, data in by_league.items():
+                    total = data["total"]
+                    if total >= 20:
+                        hw = data["home_win"] / total
+                        aw = data["away_win"] / total
+                        adv = 1.0 + (hw - aw) * 0.8
+                        adv = max(1.0, min(1.35, adv))
+                        home_adv_learned[league] = round(adv, 3)
+                        data["home_adv_real"] = adv
+
+                total_all = len(finished)
+                draw_pct = (by_result["X"] / max(1, total_all)) * 100
+                rho_opt = 0.12
+                if draw_pct > 32:
+                    rho_opt = 0.15
+                elif draw_pct < 24:
+                    rho_opt = 0.08
+
+                weights = {"poisson_dc":0.70, "elo_mov":0.20, "forma_ema":0.10}
+                if by_result["1"] > by_result["2"] * 1.3:
+                    weights["poisson_dc"] = 0.75
+
+                # Guardar log
                 try:
-                    from backend.services.auto_learn import auto_learn_from_errors
-                except ModuleNotFoundError:
-                    from services.auto_learn import auto_learn_from_errors
-                result = auto_learn_from_errors()
+                    log_entry = {"source": "auto_learn_V118.2", "date": datetime.now().strftime('%Y-%m-%d'), "count": len(finished), "status": f"home_adv={home_adv_learned} rho={rho_opt} draw={draw_pct:.1f}%"}
+                    client.table('sync_log').insert(log_entry).execute()
+                except:
+                    pass
+
+                result = {
+                    "status": "learned V118.2 INLINE",
+                    "finished_analyzed": len(finished),
+                    "draw_pct": round(draw_pct,1),
+                    "home_adv_learned": home_adv_learned,
+                    "rho_optimal": rho_opt,
+                    "dixon_dist": dixon,
+                    "result_type": by_result,
+                    "weights_suggested": weights,
+                    "by_league": {k: {"total":v["total"], "home_win":v["home_win"], "draw":v["draw"], "away_win":v["away_win"], "home_adv":round(v.get("home_adv_real",1.0),3)} for k,v in list(by_league.items())[:10]}
+                }
+
                 self.send_response(200)
                 self.send_header("Content-Type","application/json")
                 _cors(self)
@@ -807,6 +908,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps({"error":str(e),"trace":traceback.format_exc()[:2000]}).encode())
             return
+
+
 
         if parsed.path == "/api/supabase/backfill-reset":
 
