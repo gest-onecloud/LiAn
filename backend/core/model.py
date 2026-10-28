@@ -1,6 +1,6 @@
 
 """
-LiAn V118.3 - AutoLearn 2859 + Dixon-Coles + ELO MOV + Forma EMA + HomeAdv por liga + MonteCarlo validador
+LiAn V119 - Disciplinary Tarjetas Rojas/Amarillas Faltas Arbitro + AutoLearn 2859 + Dixon-Coles + ELO MOV + Forma EMA + HomeAdv por liga + MonteCarlo validador
 Fix: Poisson y MonteCarlo ya no duplican, Dixon-Coles corrige empates 0-0,1-0,0-1,1-1
 """
 import math
@@ -17,7 +17,7 @@ except:
     HAS_YAML = False
 
 class Model:
-    VERSION = "V118.3 Dixon-Coles + ELO MOV + Forma EMA - MonteCarlo validador - 330+330"
+    VERSION = "V119 Disciplinary + AutoLearn 2859 + Dixon-Coles + Tarjetas - 330+330"
 
     def __init__(self, repo=None):
         self.weights = {"poisson_dc": 0.75, "elo_mov": 0.20, "forma_ema": 0.05}  # Aprendido: Poisson 75% es mejor (local 44% vs visita 31%)
@@ -114,6 +114,11 @@ class Model:
                     "defense": float(row.get('defense_strength', 1.0) or 1.0),
                     "form": str(row.get('form_last5','') or ''),
                     "pts_last5": int(row.get('points_last5', 0) or 0),
+                    "avg_yellow": float(row.get('avg_yellow', 0) or 0),
+                    "avg_red": float(row.get('avg_red', 0) or 0),
+                    "avg_fouls": float(row.get('avg_fouls', 0) or 0),
+                    "discipline_index": float(row.get('discipline_index', 1.0) or 1.0),
+                    "avg_possession": float(row.get('avg_possession', 50) or 50),
                 }
             return True
         except Exception as e:
@@ -323,8 +328,19 @@ class Model:
         if home in self.team_stats and self.team_stats[home].get("mp",0) > 0:
             s_home = self.team_stats[home]
             s_away = self.team_stats.get(away, {"mp":0, "avg_for":1.2, "avg_against":1.2})
-            xg_home = round((s_home.get("avg_for", att_home) * 0.6 + (2 - s_away.get("avg_against", def_away)) * 0.4) * home_adv + form_home, 2)
-            xg_away = round((s_away.get("avg_for", att_away) * 0.6 + (2 - s_home.get("avg_against", def_home)) * 0.4) * (2 - home_adv + 1) /2 *0.92 + form_away, 2)
+            # V119 Disciplinary: ajusta por disciplina y posesion
+            disc_home = s_home.get("discipline_index", 1.0)
+            disc_away = s_away.get("discipline_index", 1.0)
+            poss_home = s_home.get("avg_possession", 50)
+            poss_away = s_away.get("avg_possession", 50)
+            # Equipo indisciplinado (disc>1.2) baja ataque 5% y defensa 8%
+            disc_factor_home = 1.0 - (disc_home - 1.0) * 0.15
+            disc_factor_away = 1.0 - (disc_away - 1.0) * 0.15
+            poss_factor_home = 0.9 + (poss_home - 50) * 0.01  # 60% posesion -> 1.0 factor
+            poss_factor_away = 0.9 + (poss_away - 50) * 0.01
+
+            xg_home = round((s_home.get("avg_for", att_home) * 0.6 + (2 - s_away.get("avg_against", def_away)) * 0.4) * home_adv * disc_factor_home * poss_factor_home + form_home, 2)
+            xg_away = round((s_away.get("avg_for", att_away) * 0.6 + (2 - s_home.get("avg_against", def_home)) * 0.4) * (2 - home_adv + 1) /2 *0.92 * disc_factor_away * poss_factor_away + form_away, 2)
             xg_home = max(0.15, xg_home)
             xg_away = max(0.15, xg_away)
             xg_source = f"REAL team_stats + HomeAdv {home_adv} {mp_home}/{mp_away} pj"
@@ -453,7 +469,7 @@ class Model:
             explic = [
                 f"xG {xg_home}-{xg_away} ({xg_source}) Dixon-Coles rho=0.12",
                 f"ELO MOV {home}={elo_home:.0f} vs {away}={elo_away:.0f} diff={elo_home-elo_away:.0f} src={self.elo_source}",
-                f"Ataque {home}={att_home:.2f} Def={def_home:.2f} | {away} Att={att_away:.2f} Def={def_away:.2f} HomeAdv={home_adv} src={self.team_stats_source}",
+                f"Ataque {home}={att_home:.2f} Def={def_home:.2f} Disc={s_home.get('discipline_index',1.0):.2f} Poss={s_home.get('avg_possession',50):.0f}% | {away} Att={att_away:.2f} Def={def_away:.2f} Disc={s_away.get('discipline_index',1.0):.2f} Poss={s_away.get('avg_possession',50):.0f}% HomeAdv={home_adv} src={self.team_stats_source}",
                 f"Forma EMA {home}={form_home:.3f} {away}={form_away:.3f}",
                 f"MC validador 6000: 1={prob_mc_interval['1']}% X={prob_mc_interval['X']}% 2={prob_mc_interval['2']}%"
             ]

@@ -911,7 +911,53 @@ class Handler(BaseHTTPRequestHandler):
 
 
 
+
+        if parsed.path == "/api/supabase/discipline-sync":
+            # V119 Disciplina: estima tarjetas/faltas/arbitro
+            try:
+                try:
+                    from backend.services.discipline_sync import sync_discipline_from_api_fallback
+                except ModuleNotFoundError:
+                    from services.discipline_sync import sync_discipline_from_api_fallback
+                result = sync_discipline_from_api_fallback()
+                self.send_response(200)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps(result).encode())
+            except Exception as e:
+                import traceback
+                self.send_response(500)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({"error":str(e),"trace":traceback.format_exc()[:2000]}).encode())
+            return
+
+        if parsed.path == "/api/supabase/discipline-team":
+            # V119 Calcula disciplina por equipo
+            try:
+                try:
+                    from backend.services.discipline_sync import calc_team_discipline_stats
+                except ModuleNotFoundError:
+                    from services.discipline_sync import calc_team_discipline_stats
+                result = calc_team_discipline_stats()
+                self.send_response(200)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps(result).encode())
+            except Exception as e:
+                import traceback
+                self.send_response(500)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({"error":str(e),"trace":traceback.format_exc()[:2000]}).encode())
+            return
+
         if parsed.path == "/api/supabase/backfill-reset":
+
 
 
             # Fuerza reset del backfill si se quedo pegado
