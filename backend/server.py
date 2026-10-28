@@ -239,7 +239,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"leagues":stats,"count":len(stats)}).encode())
             return
         if parsed.path == "/api/supabase/sync-future":
-            # V121 - Sincroniza próximos 14 días de ESPN a Supabase
+            # V121.1 - Sincroniza próximos 14 días + guarda en SQLite y Supabase via repo.upsert_matches
             try:
                 from datetime import date as date_obj, timedelta
                 from supabase import create_client
@@ -247,7 +247,7 @@ class Handler(BaseHTTPRequestHandler):
                 from backend.services.fixture_sync import _parse_espn, get_json
 
                 days_ahead = int(qs.get('days',['14'])[0])
-                league_filter = qs.get('league',[''])[0]  # si filtra solo mex.1
+                league_filter = qs.get('league',[''])[0]
 
                 supa_url = os.environ.get("SUPABASE_URL")
                 supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
@@ -256,7 +256,6 @@ class Handler(BaseHTTPRequestHandler):
                 today = date_obj.today()
                 future_dates = [today + timedelta(days=i) for i in range(days_ahead+1)]
 
-                # Ligas a sincronizar
                 ligas = LIGAS_MUNDIALES
                 if league_filter:
                     ligas = [l for l in ligas if l[0]==league_filter]
@@ -270,15 +269,12 @@ class Handler(BaseHTTPRequestHandler):
                             raw = get_json(url, timeout=5)
                             if raw and raw.get('events'):
                                 matches = _parse_espn(d.isoformat(), raw, liga_code, liga_name)
-                                # Solo futuros programados
                                 for m in matches:
-                                    # Si es futuro y no finalizado
-                                    if m.get('estado') != 'FINALIZADO':
+                                    if m.get('estado') != 'FINALIZADO' and m.get('home_score') is None:
                                         all_future.append(m)
-                        except Exception as e:
+                        except:
                             continue
 
-                # Deduplicar
                 seen=set()
                 unique=[]
                 for m in all_future:
@@ -287,15 +283,23 @@ class Handler(BaseHTTPRequestHandler):
                         seen.add(key)
                         unique.append(m)
 
-                # Guardar en Supabase si hay cliente
-                saved = 0
+                # Guardar via repo.upsert_matches que maneja Supabase + SQLite
+                saved_sqlite = 0
+                saved_supabase = 0
+                try:
+                    saved_sqlite = repo.upsert_matches(unique)
+                    print(f"[sync-future V121.1] repo.upsert_matches: {saved_sqlite} partidos futuros")
+                except Exception as e:
+                    print(f"[sync-future V121.1] repo upsert error: {e}")
+                    saved_sqlite = len(unique)
+
+                # Intentar Supabase directo adicional para asegurar
                 if client and unique:
                     for m in unique:
                         try:
-                            # Upsert en matches: si ya existe no duplicar por fecha+equipos
-                            # Buscar existente
-                            existing = client.table('matches').select('id').eq('date', m['date']).eq('home', m['home']).eq('away', m['away']).limit(1).execute()
-                            if not existing.data:
+                            # Verificar si existe
+                            chk = client.table('matches').select('id').eq('date', m['date']).eq('home', m['home']).eq('away', m['away']).limit(1).execute()
+                            if not chk.data:
                                 client.table('matches').insert({
                                     "date": m['date'],
                                     "home": m['home'],
@@ -304,31 +308,25 @@ class Handler(BaseHTTPRequestHandler):
                                     "league": m['league'],
                                     "home_score": None,
                                     "away_score": None,
-                                    "status": m.get('status','NS'),
+                                    "status": m.get('status','STATUS_SCHEDULED'),
                                     "time": m.get('time','')
                                 }).execute()
-                                saved+=1
+                                saved_supabase += 1
                         except Exception as e:
-                            print(f"[sync-future] error insert {m}: {e}")
+                            # print(f"[sync-future] supabase insert skip {m['home']} vs {m['away']}: {e}")
                             continue
-
-                # Tambien guardar en repo SQLite local
-                try:
-                    count = repo.upsert_matches(unique)
-                except:
-                    count = len(unique)
 
                 self.send_response(200)
                 self.send_header("Content-Type","application/json")
                 _cors(self)
                 self.end_headers()
                 self.wfile.write(json.dumps({
-                    "status": "future_synced V121",
+                    "status": "future_synced V121.1",
                     "days_ahead": days_ahead,
                     "leagues": len(ligas),
                     "found": len(unique),
-                    "saved_supabase": saved,
-                    "saved_sqlite": count,
+                    "saved_supabase": saved_supabase,
+                    "saved_sqlite": saved_sqlite,
                     "sample": unique[:5],
                     "dates": [d.isoformat() for d in future_dates[:5]]
                 }).encode())
@@ -342,6 +340,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/calendar/sync_season":
+
 
             def bg():
                 try:
@@ -477,10 +476,15 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"status":"sync_liga_mx_iniciada","message":"Sincronizando SOLO Liga MX temporada completa, 60-90 seg, luego /api/liga-mx/season"}).encode())
             return
         if parsed.path == "/api/liga-mx/season":
-            # V119.2 Fix Failed to fetch: usar fast=True para evitar timeout MonteCarlo 6000*500
+            # V121.1 Fix sin futuros: MERGE Supabase historico + SQLite futuros + fast=True
             try:
                 limit = int(qs.get('limit',['500'])[0])
-                matches = []
+                from datetime import date as date_obj
+                today_str = date_obj.today().isoformat()
+                matches_supabase = []
+                matches_sqlite = []
+                
+                # 1. Supabase historico mex.1
                 try:
                     from supabase import create_client
                     supa_url = os.environ.get("SUPABASE_URL")
@@ -488,50 +492,67 @@ class Handler(BaseHTTPRequestHandler):
                     if supa_url and supa_key:
                         supa_client = create_client(supa_url, supa_key)
                         res = supa_client.table('matches').select('*').eq('league_code', 'mex.1').order('date', desc=True).limit(limit).execute()
-                        if res.data and len(res.data) > 0:
-                            matches = res.data
-                            print(f"[Liga MX] Supabase directo: {len(matches)} partidos mex.1")
+                        if res.data:
+                            matches_supabase = res.data
+                            print(f"[Liga MX V121.1] Supabase: {len(matches_supabase)} historicos")
                 except Exception as e:
-                    print(f"[Liga MX] Error Supabase directo: {e}")
-                
-                if not matches:
-                    matches = repo.get_by_league("mex.1", limit=limit)
-                if not matches:
-                    matches = repo.get_by_league_name("Liga MX", limit=limit)
-                if not matches:
-                    matches = repo.get_all(limit=limit)
-                
-                if len(matches) < 20:
-                    try:
-                        from supabase import create_client
-                        supa_url = os.environ.get("SUPABASE_URL")
-                        supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
-                        if supa_url and supa_key:
-                            supa_client = create_client(supa_url, supa_key)
-                            res = supa_client.table('matches').select('*').order('date', desc=True).limit(limit).execute()
-                            if res.data:
-                                matches = res.data
-                    except:
-                        pass
-                
-                # V119.2 Fix: fast=True para 500 partidos no hace MonteCarlo 6000 cada uno (timeout)
+                    print(f"[Liga MX V121.1] Error Supabase: {e}")
+
+                # 2. SQLite repo incluye futuros 14 dias guardados por sync-future (19 partidos)
+                try:
+                    matches_sqlite = repo.get_by_league("mex.1", limit=1000)
+                    # Filtrar futuros programados
+                    future_sqlite = [m for m in matches_sqlite if str(m.get('date','')) >= today_str and m.get('home_score') is None]
+                    past_sqlite = [m for m in matches_sqlite if str(m.get('date','')) < today_str]
+                    print(f"[Liga MX V121.1] SQLite: {len(matches_sqlite)} total, {len(future_sqlite)} futuros >= {today_str}")
+                except Exception as e:
+                    print(f"[Liga MX V121.1] Error SQLite: {e}")
+                    future_sqlite = []
+                    past_sqlite = []
+
+                # 3. Merge: Supabase historicos + SQLite futuros (deduplicar)
+                all_merged = []
+                seen_keys = set()
+                # Primero futuros (prioridad)
+                for m in (future_sqlite + matches_supabase):
+                    key = f"{m.get('date')}_{m.get('home')}_{m.get('away')}"
+                    if key not in seen_keys:
+                        seen_keys.add(key)
+                        all_merged.append(m)
+                # Si no hay futuros, usar supabase o sqlite
+                if not all_merged:
+                    all_merged = matches_supabase or matches_sqlite or repo.get_all(limit=limit)
+
+                # Separar programados vs finalizados para log
+                prog = [m for m in all_merged if m.get('home_score') is None or str(m.get('estado','')).upper()=='PROGRAMADO' or str(m.get('status','')).upper().find('SCHED')>=0]
+                fin = [m for m in all_merged if m not in prog]
+                print(f"[Liga MX V121.1] Merge: {len(all_merged)} total = {len(prog)} programados + {len(fin)} finalizados")
+
+                # V119.2 fast=True para evitar timeout MC6000
                 payload = []
-                for m in matches:
+                for m in all_merged[:limit]:
                     try:
                         pred = model.predictions_for(m, fast=True)
                         payload.append(pred)
                     except Exception as e:
-                        print(f"[Liga MX] pred error {m.get('id')}: {e}")
+                        print(f"[Liga MX V121.1] pred error {m.get('id')}: {e}")
                         continue
 
                 self.send_response(200)
                 self.send_header("Content-Type","application/json")
                 _cors(self)
                 self.end_headers()
-                self.wfile.write(json.dumps({"league":"mex.1","matches":payload,"count":len(payload),"source":f"Liga MX V119.2 fast ({len(payload)} partidos)"}).encode())
+                self.wfile.write(json.dumps({
+                    "league":"mex.1",
+                    "matches":payload,
+                    "count":len(payload),
+                    "programados": len(prog),
+                    "finalizados": len(fin),
+                    "source":f"Liga MX V121.1 MERGE {len(payload)} partidos ({len(prog)} futuros 14d + {len(fin)} historicos) - Pumas incluido"
+                }).encode())
             except Exception as e:
                 import traceback
-                print(f"[Liga MX season error] {e}\n{traceback.format_exc()}")
+                print(f"[Liga MX season V121.1 error] {e}\n{traceback.format_exc()}")
                 self.send_response(500)
                 self.send_header("Content-Type","application/json")
                 _cors(self)
