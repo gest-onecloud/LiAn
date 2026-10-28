@@ -55,27 +55,25 @@ async function mejorarPartido(home, away, league, btn){
       card.querySelector('.card-probs').innerHTML = '<span style="color:#1ee07a">L: '+(p['1']||0).toFixed(1)+'%</span><span>E: '+(p['X']||0).toFixed(1)+'%</span><span style="color:#ff6b6b">V: '+(p['2']||0).toFixed(1)+'%</span><span class="sum">Σ '+((p['1']+p['X']+p['2'])).toFixed(1)+'%</span>';
       const favEl = card.querySelector('.fav');
       if(favEl) favEl.innerHTML = '★ '+esc(data.favorite);
-      // V122.2 - Actualizar confianza por descanso
+      // V122.3 - Solo cambia confiabilidad, sin explicar por que (como pide usuario)
+      // Guardar conf original antes de mejorar
       const confEl = card.querySelector('.conf');
+      const confOriginal = confEl ? confEl.textContent : '';
+      const hadMedia = confOriginal.includes('Media');
+      const hadAlta = confOriginal.includes('Alta');
+      
       if(confEl && data.confidence){
         let dot=''; if(data.confidence==='Alta') dot='<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#1ee07a;margin-left:4px"></span>'; else if(data.confidence==='Media') dot='<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f5d547;margin-left:4px"></span>'; else dot='<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ff6b6b;margin-left:4px"></span>';
         confEl.innerHTML = 'Conf: '+esc(data.confidence)+dot;
+        // Si bajo de Media/Alta a Limitada, mostrar advertencia simple sin explicar por que
+        if((hadMedia || hadAlta) && data.confidence==='Limitada'){
+          confEl.innerHTML += ' <span style="font-size:9px;color:#ff6b6b;margin-left:4px" title="Ajuste por calendario">⚠️ ajustada</span>';
+        }
       }
-      // V122.1 - Mostrar descanso solo al mejorar, no en base para no saturar
-      let restHtml = '';
-      if(data.home_rest_days!=null || data.away_rest_days!=null){
-        const hr = data.home_rest_days!=null ? data.home_rest_days+'d' : '?';
-        const ar = data.away_rest_days!=null ? data.away_rest_days+'d' : '?';
-        const hrLabel = data.home_rest_label||'';
-        const arLabel = data.away_rest_label||'';
-        let restColor = '#f5d547';
-        if(hrLabel.includes('CRITICO') || arLabel.includes('CRITICO') || hrLabel.includes('ALTO') || arLabel.includes('ALTO')) restColor = '#ff6b6b';
-        restHtml = '<div class="rest-info" style="font-size:9px;color:'+restColor+';margin-top:4px;padding:4px;background:#1a1a0a;border-radius:4px">⏱️ Descanso: '+esc(home)+' '+hr+' ('+esc(hrLabel)+') vs '+esc(away)+' '+ar+' ('+esc(arLabel)+')</div>';
-        const existingRest = card.querySelector('.rest-info');
-        if(existingRest) existingRest.remove();
-        const probsEl = card.querySelector('.card-probs');
-        if(probsEl) probsEl.insertAdjacentHTML('afterend', restHtml);
-      }
+      // Limpiar cualquier info previa de descanso si existia
+      const existingRest = card.querySelector('.rest-info');
+      if(existingRest) existingRest.remove();
+      
       btn.innerHTML = '✅ Mejorado';
       btn.className = 'badge badge-mejorado';
       btn.disabled = true;

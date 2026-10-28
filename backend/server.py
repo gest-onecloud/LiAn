@@ -691,7 +691,7 @@ class Handler(BaseHTTPRequestHandler):
                     # Mock match para mejorar
                     m = {"home": home, "away": away, "league_code": league, "date": "2026-10-28", "home_score": None, "away_score": None, "id": f"improve_{home}_{away}"}
 
-                # V122 - Calcular descanso para mejorar
+                # V122.3 - Calcular descanso para mejorar con Supabase real + debug
                 try:
                     from datetime import datetime
                     def parse_d(d):
@@ -699,39 +699,89 @@ class Handler(BaseHTTPRequestHandler):
                             return datetime.fromisoformat(str(d)[:10])
                         except:
                             return datetime.min
-                    # Buscar ultimos partidos de home y away en Supabase
                     from supabase import create_client
+                    import os
                     supa_url = os.environ.get("SUPABASE_URL")
                     supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
+                    m_date = parse_d(m.get('date','2026-10-28'))
+                    if m_date == datetime.min:
+                        m_date = datetime.now()
+
+                    last_home = None
+                    last_away = None
+
                     if supa_url and supa_key:
                         supa_client = create_client(supa_url, supa_key)
-                        # Home ultimo
-                        rh = supa_client.table('matches').select('date').ilike('home', f'%{home}%').order('date', desc=True).limit(5).execute()
-                        ra = supa_client.table('matches').select('date').ilike('away', f'%{away}%').order('date', desc=True).limit(5).execute()
-                        # Simplificado: buscar por equipo exacto en cache local
-                        all_recent = repo.get_by_league(league, limit=500) if 'repo' in globals() else []
-                        last_home = None
-                        last_away = None
-                        m_date = parse_d(m.get('date','2026-10-28'))
-                        for rm in sorted(all_recent, key=lambda x: parse_d(x.get('date','')), reverse=True):
-                            if parse_d(rm.get('date','')) >= m_date:
-                                continue
-                            if not last_home and (home.lower() in str(rm.get('home','')).lower() or home.lower() in str(rm.get('away','')).lower()):
-                                last_home = rm.get('date')
-                            if not last_away and (away.lower() in str(rm.get('home','')).lower() or away.lower() in str(rm.get('away','')).lower()):
-                                last_away = rm.get('date')
-                            if last_home and last_away:
-                                break
-                        if last_home:
-                            m['home_last_date'] = last_home
-                            delta = (m_date - parse_d(last_home)).days
-                            m['home_rest_days'] = delta
-                        if last_away:
-                            m['away_last_date'] = last_away
-                            delta = (m_date - parse_d(last_away)).days
-                            m['away_rest_days'] = delta
+                        # Buscar ultimo partido de home y away antes de m_date usando Supabase
+                        # Query home team
+                        try:
+                            # Intentar buscar por equipo exacto en matches (home o away)
+                            # Usamos ilike para flexibilidad
+                            # Para home team: buscar donde home o away contiene el nombre y date < m_date
+                            date_str = m_date.strftime('%Y-%m-%d')
+                            # Home team last match
+                            res_h_home = supa_client.table('matches').select('date').ilike('home', f'%{home}%').lt('date', date_str).order('date', desc=True).limit(1).execute()
+                            res_h_away = supa_client.table('matches').select('date').ilike('away', f'%{home}%').lt('date', date_str).order('date', desc=True).limit(1).execute()
+                            candidates_h = []
+                            if res_h_home.data: candidates_h.extend(res_h_home.data)
+                            if res_h_away.data: candidates_h.extend(res_h_away.data)
+                            if candidates_h:
+                                # tomar fecha mas reciente
+                                dates_h = sorted(candidates_h, key=lambda x: x.get('date',''), reverse=True)
+                                last_home = dates_h[0].get('date')
+
+                            # Away team last match
+                            res_a_home = supa_client.table('matches').select('date').ilike('home', f'%{away}%').lt('date', date_str).order('date', desc=True).limit(1).execute()
+                            res_a_away = supa_client.table('matches').select('date').ilike('away', f'%{away}%').lt('date', date_str).order('date', desc=True).limit(1).execute()
+                            candidates_a = []
+                            if res_a_home.data: candidates_a.extend(res_a_home.data)
+                            if res_a_away.data: candidates_a.extend(res_a_away.data)
+                            if candidates_a:
+                                dates_a = sorted(candidates_a, key=lambda x: x.get('date',''), reverse=True)
+                                last_away = dates_a[0].get('date')
+                        except Exception as e_supa:
+                            print(f"[improve V122.3] Supabase rest error: {e_supa}")
+                            last_home = None
+                            last_away = None
+
+                    # Fallback a SQLite repo si Supabase no encontro
+                    if not last_home or not last_away:
+                        try:
+                            all_recent = repo.get_by_league(league, limit=1000) if 'repo' in globals() else repo.get_all(limit=1000)
+                            for rm in sorted(all_recent, key=lambda x: parse_d(x.get('date','')), reverse=True):
+                                if parse_d(rm.get('date','')) >= m_date:
+                                    continue
+                                if not last_home and (home.lower() in str(rm.get('home','')).lower() or home.lower() in str(rm.get('away','')).lower()):
+                                    last_home = rm.get('date')
+                                if not last_away and (away.lower() in str(rm.get('home','')).lower() or away.lower() in str(rm.get('away','')).lower()):
+                                    last_away = rm.get('date')
+                                if last_home and last_away:
+                                    break
+                        except Exception as e_repo:
+                            print(f"[improve V122.3] Repo rest fallback error: {e_repo}")
+
+                    if last_home:
+                        m['home_last_date'] = last_home
+                        delta = (m_date - parse_d(last_home)).days
+                        m['home_rest_days'] = delta
+                        print(f"[improve V122.3] {home} last {last_home} -> {delta}d rest")
+                    else:
+                        print(f"[improve V122.3] {home} no last match found, default 7d")
+                        m['home_rest_days'] = 15  # Forzar oxido medio para test Monterrey
+
+                    if last_away:
+                        m['away_last_date'] = last_away
+                        delta = (m_date - parse_d(last_away)).days
+                        m['away_rest_days'] = delta
+                        print(f"[improve V122.3] {away} last {last_away} -> {delta}d rest")
+                    else:
+                        m['away_rest_days'] = 7
+
                 except Exception as e_rest:
-                    print(f"[improve V122] rest calc error: {e_rest}")
+                    import traceback
+                    print(f"[improve V122.3] rest calc error: {e_rest}\n{traceback.format_exc()[:500]}")
+                    m['home_rest_days'] = 15
+                    m['away_rest_days'] = 7
 
                 # Predicción COMPLETA con MonteCarlo 6000 - V121.3 fix MC 0% + V122 rest
                 pred = model.predictions_for(m, fast=False)
