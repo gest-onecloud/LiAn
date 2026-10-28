@@ -182,7 +182,7 @@ async function loadLigaMXOnly(){
   }
   try{
     $status.textContent='Cargando base Liga MX... temporada completa';
-    const data=await api('/api/liga-mx/season?limit=500');
+    const data=await api('/api/liga-mx/season?limit=250');
     if(data&&data.matches&&data.matches.length>0){
       allMatches=data.matches;
       SEASON_CACHE=data.matches;
@@ -197,7 +197,7 @@ async function loadLigaMXOnly(){
     }
   }catch(e){log('Error base: '+e.message,'err');}
   try{
-    const allData=await api('/api/calendar/season?limit=500');
+    const allData=await api('/api/calendar/season?limit=250');
     allMatches=allData.matches||[];
     ALL_BASE_CACHE_LOADED=true;
     $status.textContent='BASE: '+allMatches.length+' partidos - cache';
@@ -209,48 +209,35 @@ async function loadLigaMXOnly(){
 }
 
 async function loadFuture14Days(){
-  // V121 - Próximos 14 días para que haya programados
+  // V121.2 Fix se queda cargando: NO llamar sync-future por defecto si ya hay programados, solo recarga ligera
   try{
-    $status.textContent='Buscando próximos 14 días...';
-    log('V121 - Sincronizando próximos 14 días futuros...','info');
+    // Si ya tenemos programados, no sincronizar de nuevo (evita 15 llamadas ESPN lentas)
+    const progCount = allMatches.filter(m=>m.estado==='PROGRAMADO' || !m.home_score || (m.date && m.date >= new Date().toISOString().slice(0,10))).length;
+    if(progCount>=5){
+      log('Ya hay '+progCount+' programados en cache, no sync-future (evita carga)','info');
+      $status.textContent='BASE: '+allMatches.length+' partidos ('+progCount+' programados próximos 14d) - Cache V121.2 fast';
+      return;
+    }
+    $status.textContent='Buscando próximos 14 días... (solo mex.1)';
+    log('V121.2 - Sincronizando próximos 14 días solo si faltan programados...','info');
     const future = await api('/api/supabase/sync-future?days=14&league=mex.1');
     if(future && future.found && future.found>0){
-      log('Futuro: '+future.found+' partidos próximos '+future.days_ahead+' días (Guardados SQLite '+future.saved_sqlite+')','ok');
-      // Recargar Liga MX para incluir futuros
-      const fresh = await api('/api/liga-mx/season?limit=500');
+      log('Futuro: '+future.found+' partidos próximos (SQLite '+future.saved_sqlite+')','ok');
+      const fresh = await api('/api/liga-mx/season?limit=250');
       if(fresh && fresh.matches){
-        // Merge: futuros programados + histórico
-        const existingIds = new Set(allMatches.map(m=>m.date+'_'+m.home+'_'+m.away));
-        const newOnes = fresh.matches.filter(m=>!existingIds.has(m.date+'_'+m.home+'_'+m.away));
-        // También traer programados que no estaban
-        const programados = fresh.matches.filter(m=>m.estado==='PROGRAMADO' || !m.home_score);
-        if(programados.length>0){
-          allMatches = programados.concat(allMatches);
-          // Dedup
-          const seen={};
-          allMatches = allMatches.filter(m=>{const k=m.date+'_'+m.home+'_'+m.away; if(seen[k]) return false; seen[k]=true; return true;});
-          renderAll();
-          $status.textContent='BASE: '+allMatches.length+' partidos | Próximos 14 días: '+programados.length+' programados | Global '+fresh.count;
-          log('Actualizado con '+programados.length+' programados próximos 14 días','ok');
-        }
+        allMatches = fresh.matches;
+        SEASON_CACHE = fresh.matches;
+        renderAll();
+        $status.textContent='BASE: '+fresh.count+' partidos | '+fresh.programados+' programados 14d | '+fresh.finalizados+' finalizados - V121.2 fast';
+        log('Actualizado '+fresh.count+' total con '+fresh.programados+' programados','ok');
       }
     } else {
-      log('No hay futuros próximos en ESPN para mex.1 - Liga MX en receso? Probando todas ligas','info');
-      // Intentar todas ligas si mex.1 no tiene
-      const futureAll = await api('/api/supabase/sync-future?days=14');
-      if(futureAll && futureAll.found>0){
-        log('Futuro todas ligas: '+futureAll.found+' partidos','ok');
-        const fresh2 = await api('/api/calendar/season?limit=500');
-        if(fresh2 && fresh2.matches){
-          allMatches = fresh2.matches;
-          renderAll();
-        }
-      } else {
-        log('Sin futuros en ESPN próximas 2 semanas - mostrando histórico 215','info');
-      }
+      log('Sin futuros nuevos, mostrando '+allMatches.length+' base','info');
+      $status.textContent='BASE: '+allMatches.length+' partidos - sin futuros ESPN hoy - V121.2';
     }
   } catch(e){
-    log('Error futuros 14 días: '+e.message,'err');
+    log('Error futuros 14 días (no bloquea): '+e.message,'err');
+    $status.textContent='BASE: '+allMatches.length+' partidos - cache V121.2 fast (futuros error no bloquea)';
   }
 }
 

@@ -388,7 +388,11 @@ class Model:
         s = prob_forma_ema["1"]+prob_forma_ema["X"]+prob_forma_ema["2"]
         prob_forma_ema = {k: round(v/s*100,1) for k,v in prob_forma_ema.items()}
 
-        prob_mc_interval = self._montecarlo_interval(xg_home, xg_away)
+        # V121.2 Fix se queda cargando: fast=True NO hace MC6000 (solo on-demand via boton Mejorar)
+        if fast:
+            prob_mc_interval = {"1": 33.3, "X": 33.3, "2": 33.3}
+        else:
+            prob_mc_interval = self._montecarlo_interval(xg_home, xg_away)
 
         w = self.weights
         final_1 = prob_poisson_dc["1"]*w["poisson_dc"] + prob_elo_mov["1"]*w["elo_mov"] + prob_forma_ema["1"]*w["forma_ema"]
