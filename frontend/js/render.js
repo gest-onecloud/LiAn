@@ -9,8 +9,73 @@ function cardA(m){
   const fecha=(m.date||'').slice(0,10);const hora=(m.time||'').slice(0,5);const liga=(m.league||m.league_code||'Liga').toUpperCase();
   let scoreBox='';if(m.home_score!=null&&m.away_score!=null)scoreBox='<div class="score-box">'+m.home_score+' - '+m.away_score+'</div>';else scoreBox='<div class="score-box score-vs">VS</div>';
   const fav=m.favorite||'';const conf=m.confidence||'';let dot='';if(conf==='Alta')dot='<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#1ee07a;margin-left:4px"></span>';else if(conf==='Media')dot='<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f5d547;margin-left:4px"></span>';else if(conf==='Limitada')dot='<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ff6b6b;margin-left:4px"></span>';
-  return '<div class="card-compact"><div class="card-top"><span class="card-league">'+esc(liga)+' • '+esc(hora)+' • '+esc(fecha)+'</span>'+badge+'</div><div class="card-teams"><span>'+esc(m.home)+'</span><span class="vs-small"> vs </span><span>'+esc(m.away)+'</span></div>'+scoreBox+'<div class="card-probs"><span>L: '+(p['1']||0).toFixed(1)+'%</span><span>E: '+(p['X']||0).toFixed(1)+'%</span><span>V: '+(p['2']||0).toFixed(1)+'%</span><span class="sum">Σ '+total+'%</span></div><div class="card-bottom"><span class="fav">★ '+esc(fav)+'</span><span class="conf">Conf: '+esc(conf)+dot+'</span></div></div>';
+  
+  // V120 - Botón Mejorar solo para programados
+  let mejorarBtn = '';
+  if(m.estado!=='FINALIZADO' && !m.improved){
+    const safeHome = (m.home||'').replace(/'/g,'');
+    const safeAway = (m.away||'').replace(/'/g,'');
+    const safeLeague = (m.league_code||m.league||'mex.1').replace(/'/g,'');
+    mejorarBtn = '<button class="btn-mejorar" onclick="mejorarPartido(\''+esc(safeHome)+'\',\''+esc(safeAway)+'\',\''+esc(safeLeague)+'\', this)" title="MonteCarlo 6000 + Disciplina + ELO para este partido">🚀 Mejorar</button>';
+  } else if(m.improved){
+    mejorarBtn = '<span class="badge badge-mejorado">🚀 Mejorado MC6000</span>';
+  }
+
+  // Mostrar disciplina si existe
+  let discInfo = '';
+  if(m.team_stats || m.discipline_index){
+    const disc = m.discipline_index || '';
+    if(disc) discInfo = '<div class="disc-info" style="font-size:10px;color:#8aa0c8">🟨 Disciplina: '+disc+'</div>';
+  }
+
+  return '<div class="card-compact"><div class="card-top"><span class="card-league">'+esc(liga)+' • '+esc(hora)+' • '+esc(fecha)+'</span>'+badge+'</div><div class="card-teams"><span>'+esc(m.home)+'</span><span class="vs-small"> vs </span><span>'+esc(m.away)+'</span></div>'+scoreBox+'<div class="card-probs"><span>L: '+(p['1']||0).toFixed(1)+'%</span><span>E: '+(p['X']||0).toFixed(1)+'%</span><span>V: '+(p['2']||0).toFixed(1)+'%</span><span class="sum">Σ '+total+'%</span></div><div class="card-bottom"><span class="fav">★ '+esc(fav)+'</span><span class="conf">Conf: '+esc(conf)+dot+'</span>'+mejorarBtn+'</div>'+discInfo+'</div>';
 }
+
+// V120 - Función mejorar partido individual con MonteCarlo
+async function mejorarPartido(home, away, league, btn){
+  if(!btn) return;
+  const originalText = btn.innerHTML;
+  btn.innerHTML = '⏳ Mejorando...';
+  btn.disabled = true;
+  try{
+    const url = 'https://lian-backend.onrender.com/api/match/improve?home='+encodeURIComponent(home)+'&away='+encodeURIComponent(away)+'&league='+encodeURIComponent(league);
+    log('Mejorando '+home+' vs '+away+' con MonteCarlo 6000...', 'info');
+    const res = await fetch(url);
+    const data = await res.json();
+    if(data.error){
+      log('Error mejorar: '+data.error, 'err');
+      btn.innerHTML = '❌ Error';
+      setTimeout(()=>{btn.innerHTML=originalText; btn.disabled=false;}, 2000);
+      return;
+    }
+    // Actualizar card
+    const card = btn.closest('.card-compact');
+    if(card){
+      const p = data.probabilities;
+      card.querySelector('.card-probs').innerHTML = '<span style="color:#1ee07a">L: '+(p['1']||0).toFixed(1)+'%</span><span>E: '+(p['X']||0).toFixed(1)+'%</span><span style="color:#ff6b6b">V: '+(p['2']||0).toFixed(1)+'%</span><span class="sum">Σ '+((p['1']+p['X']+p['2'])).toFixed(1)+'%</span>';
+      const favEl = card.querySelector('.fav');
+      if(favEl) favEl.innerHTML = '★ '+esc(data.favorite)+' <small>(MC6000)</small>';
+      // MonteCarlo info
+      const mc = data.montecarlo;
+      if(mc){
+        let mcHtml = document.createElement('div');
+        mcHtml.className = 'mc-info';
+        mcHtml.style.cssText = 'font-size:10px;color:#8ab4ff;margin-top:4px;background:#0a1a33;padding:4px;border-radius:4px';
+        mcHtml.innerHTML = '🎲 MC6000: L '+((mc['1']||0)*100).toFixed(0)+'% E '+((mc['X']||0)*100).toFixed(0)+'% V '+((mc['2']||0)*100).toFixed(0)+'% | ELO '+data.elo[home]+' vs '+data.elo[away];
+        card.querySelector('.card-bottom').appendChild(mcHtml);
+      }
+      btn.innerHTML = '✅ Mejorado';
+      btn.className = 'badge badge-mejorado';
+      btn.disabled = true;
+      log('Mejorado '+home+' vs '+away+': L '+(p['1']||0).toFixed(1)+'% E '+(p['X']||0).toFixed(1)+'% V '+(p['2']||0).toFixed(1)+'% con MC6000', 'ok');
+    }
+  } catch(e){
+    log('Error mejorar '+home+' vs '+away+': '+e.message, 'err');
+    btn.innerHTML = '❌ Error';
+    setTimeout(()=>{btn.innerHTML=originalText; btn.disabled=false;}, 2000);
+  }
+}
+
 
 function calcStats(matches){
   const fin = matches.filter(m=>m.estado==='FINALIZADO');
