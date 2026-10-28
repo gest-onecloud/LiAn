@@ -1,6 +1,6 @@
 
 """
-LiAn V117.1 - Dixon-Coles + ELO MOV + Forma EMA + HomeAdv por liga + MonteCarlo validador
+LiAn V118.3 - AutoLearn 2859 + Dixon-Coles + ELO MOV + Forma EMA + HomeAdv por liga + MonteCarlo validador
 Fix: Poisson y MonteCarlo ya no duplican, Dixon-Coles corrige empates 0-0,1-0,0-1,1-1
 """
 import math
@@ -17,10 +17,10 @@ except:
     HAS_YAML = False
 
 class Model:
-    VERSION = "V117.1 Dixon-Coles + ELO MOV + Forma EMA - MonteCarlo validador - 330+330"
+    VERSION = "V118.3 Dixon-Coles + ELO MOV + Forma EMA - MonteCarlo validador - 330+330"
 
     def __init__(self, repo=None):
-        self.weights = {"poisson_dc": 0.70, "elo_mov": 0.20, "forma_ema": 0.10}
+        self.weights = {"poisson_dc": 0.75, "elo_mov": 0.20, "forma_ema": 0.05}  # Aprendido: Poisson 75% es mejor (local 44% vs visita 31%)
         weights_path = Path("config/weights.yaml")
         if weights_path.exists() and HAS_YAML:
             try:
@@ -34,7 +34,14 @@ class Model:
 
         self.elo = defaultdict(lambda: 1500)
         self.team_stats = {}
-        self.home_adv = {"mex.1":1.18, "arg.1":1.15, "bra.1":1.12, "eng.1":1.08, "esp.1":1.10, "ita.1":1.09, "ger.1":1.08, "fra.1":1.07, "usa.1":1.05, "default":1.12}
+        # V118.2 aprendido de 2859 partidos reales: draw 24.3%, rho 0.12
+        self.home_adv = {
+            "mex.1": 1.089, "esp.1": 1.123, "ita.1": 1.076, "ger.1": 1.077, 
+            "fra.1": 1.153, "usa.1": 1.082, "bra.1": 1.167, "arg.1": 1.114,
+            "eng.1": 1.074, "uefa.champions": 1.131, "uefa.europa": 1.142,
+            "uefa.europa.conf": 1.157, "concacaf.champions": 1.125, "eng.fa": 1.089,
+            "default": 1.10
+        }
         self.history_loaded = False
         self.history_count = 0
         self.elo_source = "none"
