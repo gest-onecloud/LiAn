@@ -789,7 +789,10 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/supabase/auto-learn":
             # V118 Autoaprendizaje: aprende de errores
             try:
-                from backend.services.auto_learn import auto_learn_from_errors
+                try:
+                    from backend.services.auto_learn import auto_learn_from_errors
+                except ModuleNotFoundError:
+                    from services.auto_learn import auto_learn_from_errors
                 result = auto_learn_from_errors()
                 self.send_response(200)
                 self.send_header("Content-Type","application/json")
