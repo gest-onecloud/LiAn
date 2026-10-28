@@ -28,23 +28,7 @@ function cardA(m){
     if(disc) discInfo = '<div class="disc-info" style="font-size:10px;color:#8aa0c8">🟨 Disciplina: '+disc+'</div>';
   }
 
-  // V122 Rest days badge
-  let restInfo = '';
-  if(m.home_rest_days!=null || m.away_rest_days!=null){
-    const hr = m.home_rest_days!=null ? m.home_rest_days+'d' : '?';
-    const ar = m.away_rest_days!=null ? m.away_rest_days+'d' : '?';
-    const hrLabel = m.home_rest_label||'';
-    const arLabel = m.away_rest_label||'';
-    let restColor = '#8aa0c8';
-    if((m.home_rest_days!=null && m.home_rest_days<=3) || (m.away_rest_days!=null && m.away_rest_days<=3)) restColor = '#ff6b6b';
-    else if((m.home_rest_days!=null && m.home_rest_days<=4) || (m.away_rest_days!=null && m.away_rest_days<=4)) restColor = '#f5d547';
-    // Solo mostrar si descanso corto (<5 dias) para no saturar
-    if((m.home_rest_days!=null && m.home_rest_days<5) || (m.away_rest_days!=null && m.away_rest_days<5)){
-      restInfo = '<div class="rest-info" style="font-size:9px;color:'+restColor+';margin-top:2px">⏱️ Descanso: '+esc(m.home)+' '+hr+' ('+esc(hrLabel)+') vs '+esc(m.away)+' '+ar+' ('+esc(arLabel)+')</div>';
-    }
-  }
-
-  return '<div class="card-compact"><div class="card-top"><span class="card-league">'+esc(liga)+' • '+esc(hora)+' • '+esc(fecha)+'</span>'+badge+'</div><div class="card-teams"><span>'+esc(m.home)+'</span><span class="vs-small"> vs </span><span>'+esc(m.away)+'</span></div>'+scoreBox+'<div class="card-probs"><span>L: '+(p['1']||0).toFixed(1)+'%</span><span>E: '+(p['X']||0).toFixed(1)+'%</span><span>V: '+(p['2']||0).toFixed(1)+'%</span><span class="sum">Σ '+total+'%</span></div>'+restInfo+'<div class="card-bottom"><span class="fav">★ '+esc(fav)+'</span><span class="conf">Conf: '+esc(conf)+dot+'</span>'+mejorarBtn+'</div>'+discInfo+'</div>';
+  return '<div class="card-compact"><div class="card-top"><span class="card-league">'+esc(liga)+' • '+esc(hora)+' • '+esc(fecha)+'</span>'+badge+'</div><div class="card-teams"><span>'+esc(m.home)+'</span><span class="vs-small"> vs </span><span>'+esc(m.away)+'</span></div>'+scoreBox+'<div class="card-probs"><span>L: '+(p['1']||0).toFixed(1)+'%</span><span>E: '+(p['X']||0).toFixed(1)+'%</span><span>V: '+(p['2']||0).toFixed(1)+'%</span><span class="sum">Σ '+total+'%</span></div><div class="card-bottom"><span class="fav">★ '+esc(fav)+'</span><span class="conf">Conf: '+esc(conf)+dot+'</span>'+mejorarBtn+'</div>'+discInfo+'</div>';
 }
 
 // V120 - Función mejorar partido individual con MonteCarlo
@@ -71,10 +55,23 @@ async function mejorarPartido(home, away, league, btn){
       card.querySelector('.card-probs').innerHTML = '<span style="color:#1ee07a">L: '+(p['1']||0).toFixed(1)+'%</span><span>E: '+(p['X']||0).toFixed(1)+'%</span><span style="color:#ff6b6b">V: '+(p['2']||0).toFixed(1)+'%</span><span class="sum">Σ '+((p['1']+p['X']+p['2'])).toFixed(1)+'%</span>';
       const favEl = card.querySelector('.fav');
       if(favEl) favEl.innerHTML = '★ '+esc(data.favorite);
+      // V122.1 - Mostrar descanso solo al mejorar, no en base para no saturar
+      let restHtml = '';
+      if(data.home_rest_days!=null || data.away_rest_days!=null){
+        const hr = data.home_rest_days!=null ? data.home_rest_days+'d' : '?';
+        const ar = data.away_rest_days!=null ? data.away_rest_days+'d' : '?';
+        const hrLabel = data.home_rest_label||'';
+        const arLabel = data.away_rest_label||'';
+        restHtml = '<div class="rest-info" style="font-size:9px;color:#f5d547;margin-top:4px;padding:4px;background:#1a1a0a;border-radius:4px">⏱️ Descanso: '+esc(home)+' '+hr+' ('+esc(hrLabel)+') vs '+esc(away)+' '+ar+' ('+esc(arLabel)+')</div>';
+        const existingRest = card.querySelector('.rest-info');
+        if(existingRest) existingRest.remove();
+        const probsEl = card.querySelector('.card-probs');
+        if(probsEl) probsEl.insertAdjacentHTML('afterend', restHtml);
+      }
       btn.innerHTML = '✅ Mejorado';
       btn.className = 'badge badge-mejorado';
       btn.disabled = true;
-      log('Mejorado '+home+' vs '+away+': L '+(p['1']||0).toFixed(1)+'% E '+(p['X']||0).toFixed(1)+'% V '+(p['2']||0).toFixed(1)+'% con MC6000', 'ok');
+      log('Mejorado '+home+' vs '+away+': L '+(p['1']||0).toFixed(1)+'% E '+(p['X']||0).toFixed(1)+'% V '+(p['2']||0).toFixed(1)+'% | Descanso H:'+(data.home_rest_days||'?')+'d A:'+(data.away_rest_days||'?')+'d', 'ok');
     }
   } catch(e){
     log('Error mejorar '+home+' vs '+away+': '+e.message, 'err');
