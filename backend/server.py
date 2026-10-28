@@ -759,6 +759,12 @@ class Handler(BaseHTTPRequestHandler):
                     "confidence": pred.get('confidence', ''),
                     "montecarlo": mc_norm,
                     "mc_interval": mc,
+                    "home_rest_days": pred.get('home_rest_days'),
+                    "away_rest_days": pred.get('away_rest_days'),
+                    "home_rest_label": pred.get('home_rest_label'),
+                    "away_rest_label": pred.get('away_rest_label'),
+                    "rest_factor_home": pred.get('rest_factor_home'),
+                    "rest_factor_away": pred.get('rest_factor_away'),
                     "model_version": model.VERSION,
                     "source": pred.get('source',''),
                     "explicabilidad": pred.get('explicabilidad',[]),
@@ -771,7 +777,7 @@ class Handler(BaseHTTPRequestHandler):
                         away: model.elo.get(away, 1500)
                     },
                     "improved": True,
-                    "message": f"Mejorado V121.3 con MonteCarlo 6000 real + {pred.get('source','')}"
+                    "message": f"Mejorado V122.2 con MC6000 + descanso {pred.get('home_rest_days','?')}d vs {pred.get('away_rest_days','?')}d"
                 }
 
                 self.send_response(200)

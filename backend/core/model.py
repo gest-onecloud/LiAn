@@ -516,18 +516,30 @@ class Model:
                 evidencia = 4
                 riesgo = "Alto"
 
-        # Aplicar penalizacion de confianza por descanso extremo
+        # Aplicar penalizacion de confianza por descanso extremo - V122.2 fix confiabilidad no cambiaba
+        # Monterrey 15d OXIDO MEDIO debe bajar Media->Limitada
+        is_oxido_medio_plus = rest_home_factor.get("tipo") in ["oxido_medio","oxido_alto","oxido_critico"] or rest_away_factor.get("tipo") in ["oxido_medio","oxido_alto","oxido_critico"]
+        is_fatiga_alta = rest_home_factor.get("tipo") in ["fatiga"] and rest_home_factor.get("attack",1) <= 0.86 or rest_away_factor.get("tipo") in ["fatiga"] and rest_away_factor.get("attack",1) <= 0.86
+
         if rest_conf_penalty >= 2:
             if confianza == "Alta":
                 confianza = "Media"
             elif confianza == "Media":
                 confianza = "Limitada"
-            riesgo = "Alto" if riesgo != "Alto" else riesgo
+            riesgo = "Alto"
             evidencia = max(2, evidencia - 2)
         elif rest_conf_penalty == 1:
+            # V122.2 fix: si hay oxido medio+ o fatiga alta, Media debe bajar a Limitada
             if confianza == "Alta":
                 confianza = "Media"
-            evidencia = max(3, evidencia - 1)
+                evidencia = max(3, evidencia - 1)
+            elif confianza == "Media" and (is_oxido_medio_plus or is_fatiga_alta):
+                confianza = "Limitada"
+                riesgo = "Alto" if riesgo == "Medio" else riesgo
+                evidencia = max(3, evidencia - 1)
+            elif confianza == "Media":
+                # penalizacion leve mantiene Media pero evidencia baja
+                evidencia = max(4, evidencia - 1)
 
         if evidencia >= 10:
             suf = "adecuada"
