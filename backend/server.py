@@ -247,7 +247,7 @@ class Handler(BaseHTTPRequestHandler):
                 from backend.services.fixture_sync import _parse_espn, get_json
 
                 days_ahead = int(qs.get('days',['14'])[0])
-                league_filter = qs.get('league',[''])[0]
+                league_filter = qs.get('league',[''])[0].strip().split()[0].strip()
 
                 supa_url = os.environ.get("SUPABASE_URL")
                 supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")

@@ -1,10 +1,10 @@
 
-// LiAn V116.3 - Configuracion centralizada
+// LiAn V121.1 - Configuracion centralizada
 const CONFIG = {
   BACKEND: "https://lian-backend.onrender.com",
-  VERSION: "V116.3",
-  CACHE_VERSION: "V116.3-2863-FORCE",
-  BUILD: "2026-10-27",
+  VERSION: "V121.1",
+  CACHE_VERSION: "V121.1-2863-FORCE",
+  BUILD: "2026-10-28",
   MODE: "REAL ELO Supabase 330 equipos - Ligero"
 };
 

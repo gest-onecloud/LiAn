@@ -1,3 +1,4 @@
+// LiAn V121.1 - MERGE futuros 14 dias + 215 historicos = 234 con programados 19 incluye Pumas
 const BACKEND = "https://lian-backend.onrender.com";
 const $status = document.getElementById('status');
 const $grid = document.getElementById('grid');
@@ -15,7 +16,7 @@ let customCombinada = [];
 let _lastTopAlta = [];
 let _lastTopMedia = [];
 let ALL_BASE_CACHE_LOADED = false;
-let CACHE_VERSION = 'V115-2863-FORCE'; // Force cache bust when backend changes
+let CACHE_VERSION = 'V121.1-14D-FUTUROS-MERGE'; // Force cache bust when backend changes
 
 var PROGOL_REAL = [
   {n:1, home:'PUEBLA', away:'PUMAS'},{n:2, home:'PACHUCA', away:'TIGRES'},{n:3, home:'AGUILAS', away:'TOLUCA'},{n:4, home:'ELCHE', away:'VALENCIA'},{n:5, home:'ATH. BILBAO', away:'R. SOCIEDAD'},{n:6, home:'BOURNEMOUTH', away:'LEEDS'},{n:7, home:'LIVERPOOL', away:'ARSENAL'},{n:8, home:'MILAN', away:'INTER MILAN'},{n:9, home:'JUVENTUS', away:'NAPOLES'},{n:10, home:'AUGSBURGO', away:'FRIBURGO'},{n:11, home:'LORIENT', away:'BREST'},{n:12, home:'GREMIO', away:'AT. MINEIRO'},{n:13, home:'BOCA JRS', away:'RIVER PLATE'},{n:14, home:'U. CATOLICA', away:'U. DE CHILE'}
