@@ -1,7 +1,7 @@
+
 """
-LiAn V116 - REAL ELO + REAL team_stats desde Supabase - Memoria ligera
-Carga 330 ELOs + 330 team_stats (ataque/defensa real) - Poisson real
-Poisson 58%, ELO 16%, Forma 10%, MonteCarlo 16% - 6000 sims
+LiAn V117.1 - Dixon-Coles + ELO MOV + Forma EMA + HomeAdv por liga + MonteCarlo validador
+Fix: Poisson y MonteCarlo ya no duplican, Dixon-Coles corrige empates 0-0,1-0,0-1,1-1
 """
 import math
 import hashlib
@@ -17,32 +17,30 @@ except:
     HAS_YAML = False
 
 class Model:
-    VERSION = "V116 REAL ELO + team_stats - Supabase 330+330 - Ligero"
+    VERSION = "V117.1 Dixon-Coles + ELO MOV + Forma EMA - MonteCarlo validador - 330+330"
 
     def __init__(self, repo=None):
-        self.weights = {"poisson": 0.58, "elo_fuerza": 0.16, "forma": 0.10, "montecarlo": 0.16}
+        self.weights = {"poisson_dc": 0.70, "elo_mov": 0.20, "forma_ema": 0.10}
         weights_path = Path("config/weights.yaml")
         if weights_path.exists() and HAS_YAML:
             try:
                 data = yaml.safe_load(weights_path.read_text(encoding='utf-8'))
                 if data:
-                    self.weights['poisson'] = data.get('poisson', 0.58)
-                    self.weights['elo_fuerza'] = data.get('elo_fuerza', 0.16)
-                    self.weights['forma'] = data.get('forma', 0.10)
-                    self.weights['montecarlo'] = data.get('montecarlo', 0.16)
+                    self.weights['poisson_dc'] = data.get('poisson_dc', 0.70)
+                    self.weights['elo_mov'] = data.get('elo_mov', 0.20)
+                    self.weights['forma_ema'] = data.get('forma_ema', 0.10)
             except:
                 pass
 
         self.elo = defaultdict(lambda: 1500)
         self.team_stats = {}
+        self.home_adv = {"mex.1":1.18, "arg.1":1.15, "bra.1":1.12, "eng.1":1.08, "esp.1":1.10, "ita.1":1.09, "ger.1":1.08, "fra.1":1.07, "usa.1":1.05, "default":1.12}
         self.history_loaded = False
         self.history_count = 0
         self.elo_source = "none"
         self.team_stats_source = "none"
 
-        # Cargar ELO ligero 330
         loaded_elo = self._load_elo_from_supabase_table()
-        # Cargar team_stats ligero 330
         loaded_stats = self._load_team_stats_from_supabase_table()
 
         if loaded_elo or loaded_stats:
@@ -50,16 +48,15 @@ class Model:
             self.elo_source = "elo_ratings_table" if loaded_elo else "none"
             self.team_stats_source = "team_stats_table" if loaded_stats else "none"
             self.history_count = max(len(self.elo), len(self.team_stats))
-            print(f"[Model V116] ELO: {len(self.elo)} equipos, team_stats: {len(self.team_stats)} equipos")
+            print(f"[Model V117.1] ELO: {len(self.elo)} equipos, team_stats: {len(self.team_stats)} equipos, HomeAdv por liga")
 
-        # Fallback: calcular desde repo si no se pudo cargar nada
         if not self.history_loaded and repo:
-            print("[Model V116] No se pudo cargar tablas, calculando desde matches...")
+            print("[Model V117.1] No se pudo cargar tablas, calculando desde matches...")
             loaded = self.load_historical_stats(repo, limit=1000)
             self.history_loaded = loaded
 
         if not self.history_loaded:
-            print("[Model V116] Usando fallback hash (sin historial)")
+            print("[Model V117.1] Usando fallback hash")
 
     def _load_elo_from_supabase_table(self):
         try:
@@ -80,14 +77,12 @@ class Model:
                     rating = 1500.0
                 if team:
                     self.elo[team] = rating
-            print(f"[Model V116] ELO cargado: {len(res.data)} equipos")
             return True
         except Exception as e:
-            print(f"[Model] Error cargando ELO: {e}")
+            print(f"[Model] Error ELO: {e}")
             return False
 
     def _load_team_stats_from_supabase_table(self):
-        """NUEVO V116 - Carga ataque/defensa real desde team_stats tabla"""
         try:
             from supabase import create_client
             supa_url = os.environ.get("SUPABASE_URL")
@@ -97,9 +92,7 @@ class Model:
             client = create_client(supa_url, supa_key)
             res = client.table('team_stats').select('*').limit(1000).execute()
             if not res.data:
-                print("[Model] team_stats vacia")
                 return False
-            
             for row in res.data:
                 team = str(row.get('team','')).strip()
                 if not team:
@@ -114,15 +107,10 @@ class Model:
                     "defense": float(row.get('defense_strength', 1.0) or 1.0),
                     "form": str(row.get('form_last5','') or ''),
                     "pts_last5": int(row.get('points_last5', 0) or 0),
-                    "w": 0, "d": 0, "l": 0  # Se calcula desde forma si existe
                 }
-            
-            print(f"[Model V116] team_stats cargado: {len(res.data)} equipos - Ataque/defensa REAL")
             return True
         except Exception as e:
-            print(f"[Model] Error cargando team_stats: {e}")
-            import traceback
-            print(traceback.format_exc()[:800])
+            print(f"[Model] Error team_stats: {e}")
             return False
 
     def load_historical_stats(self, repo, limit=1000):
@@ -135,10 +123,8 @@ class Model:
                 except:
                     return datetime.min
             finished.sort(key=parse_date)
-            
             elo = defaultdict(lambda: 1500)
-            stats = defaultdict(lambda: {"gf": 0, "ga": 0, "mp": 0, "w": 0, "d": 0, "l": 0, "form": deque(maxlen=5), "avg_for":0, "avg_against":0, "attack":1.0, "defense":1.0})
-            K = 20
+            stats = defaultdict(lambda: {"gf":0,"ga":0,"mp":0,"w":0,"d":0,"l":0,"form":deque(maxlen=5),"avg_for":0,"avg_against":0,"attack":1.0,"defense":1.0,"pts_last5":0})
             for m in finished:
                 home = str(m.get('home','')).strip()
                 away = str(m.get('away','')).strip()
@@ -153,6 +139,8 @@ class Model:
                 ea = elo[away]
                 exp_home = 1 / (1 + 10 ** ((ea - eh) / 400))
                 exp_away = 1 - exp_home
+                # ELO con MOV
+                K = 20 * (1 + abs(hs-aw)*0.2)
                 if hs > aw:
                     res_home, res_away = 1, 0
                 elif hs == aw:
@@ -167,43 +155,19 @@ class Model:
                 stats[away]["gf"] += aw
                 stats[away]["ga"] += hs
                 stats[away]["mp"] += 1
-                if hs > aw:
-                    stats[home]["w"] += 1
-                    stats[away]["l"] += 1
-                    stats[home]["form"].append("W")
-                    stats[away]["form"].append("L")
-                elif hs == aw:
-                    stats[home]["d"] += 1
-                    stats[away]["d"] += 1
-                    stats[home]["form"].append("D")
-                    stats[away]["form"].append("D")
-                else:
-                    stats[home]["l"] += 1
-                    stats[away]["w"] += 1
-                    stats[home]["form"].append("L")
-                    stats[away]["form"].append("W")
-            
-            # Calcular promedios
-            for team, s in stats.items():
-                mp = max(1, s["mp"])
-                s["avg_for"] = s["gf"] / mp
-                s["avg_against"] = s["ga"] / mp
-                s["attack"] = s["avg_for"] / 1.35
-                s["defense"] = s["avg_against"] / 1.35
-            
-            self.elo = elo
-            self.team_stats = stats
-            self.history_loaded = True
-            self.history_count = len(finished)
-            self.elo_source = "matches_calc"
-            self.team_stats_source = "matches_calc"
-            print(f"[Model V116] Historico calculado: {len(finished)} finalizados, {len(elo)} equipos")
+            for team,s in stats.items():
+                mp=max(1,s["mp"])
+                s["avg_for"]=s["gf"]/mp
+                s["avg_against"]=s["ga"]/mp
+            self.elo=elo
+            self.team_stats=stats
+            self.history_loaded=True
+            self.history_count=len(finished)
+            self.elo_source="matches_calc"
+            self.team_stats_source="matches_calc"
             return True
-            
         except Exception as e:
-            import traceback
-            print(f"[Model] Error cargando historico: {e}")
-            print(traceback.format_exc()[:1000])
+            print(f"[Model] Error historico: {e}")
             return False
 
     def _team_strength(self, team_name: str) -> float:
@@ -219,7 +183,6 @@ class Model:
             s = self.team_stats[team_name]
             mp = s.get("mp", 0)
             if mp > 0:
-                # Usar stats reales
                 attack = s.get("avg_for", 0) if s.get("avg_for",0)>0 else s.get("gf",0)/mp
                 defense = s.get("avg_against", 0) if s.get("avg_against",0)>0 else s.get("ga",0)/mp
                 return attack, defense, mp
@@ -229,39 +192,64 @@ class Model:
             return max(0.4, base), max(0.4, 2.4 - base), 0
         return 1.2, 1.2, 0
 
-    def _team_form(self, team_name: str) -> float:
+    def _team_form_ema(self, team_name: str) -> float:
         if team_name in self.team_stats:
             s = self.team_stats[team_name]
-            form_str = s.get("form","") if isinstance(s.get("form",""), str) else "-".join(list(s.get("form",[])))
+            form_str = s.get("form","")
             if not form_str:
-                # Intentar deque
-                form = s.get("form", [])
-                if hasattr(form, '__iter__') and not isinstance(form, str):
-                    form = list(form)
-                else:
-                    form = []
-                if not form:
-                    return 0
-                score = sum(1 if x=="W" else 0.5 if x=="D" else 0 for x in form) / len(form)
-                return (score - 0.5) * 0.2
-            # Parse "W-D-L-W-W"
+                return 0
             parts = [x.strip() for x in form_str.replace(",","-").split("-") if x.strip()]
             if not parts:
                 return 0
-            score = sum(1 if x=="W" else 0.5 if x=="D" else 0 for x in parts) / len(parts)
-            return (score - 0.5) * 0.2
+            # EMA: ultimo 40%, penultimo 25%, etc
+            weights = [0.4, 0.25, 0.15, 0.12, 0.08]
+            score = 0
+            total_w = 0
+            for i, p in enumerate(reversed(parts[-5:])):
+                w = weights[i] if i < len(weights) else 0.05
+                val = 1 if p=="W" else 0.5 if p=="D" else 0
+                score += val * w
+                total_w += w
+            if total_w>0:
+                score = score/total_w
+                return (score - 0.5) * 0.25
         return 0
+
+    def _get_home_adv(self, league_code, league_name=""):
+        lc = (league_code or "").lower()
+        ln = (league_name or "").lower()
+        if "mex" in lc or "mexico" in ln or "liga mx" in ln:
+            return self.home_adv["mex.1"]
+        if "eng" in lc or "premier" in ln:
+            return self.home_adv["eng.1"]
+        if "esp" in lc or "la liga" in ln:
+            return self.home_adv["esp.1"]
+        if lc in self.home_adv:
+            return self.home_adv[lc]
+        return self.home_adv["default"]
 
     def _poisson_prob(self, lamb, k):
         return (math.exp(-lamb) * (lamb ** k)) / math.factorial(k)
 
-    def _calc_1x2_from_xg(self, xg_home, xg_away):
+    def _dixon_coles_tau(self, hg, ag, rho=0.12):
+        if hg==0 and ag==0:
+            return 1 - rho
+        if hg==1 and ag==0:
+            return 1 + rho
+        if hg==0 and ag==1:
+            return 1 + rho
+        if hg==1 and ag==1:
+            return 1 - rho
+        return 1.0
+
+    def _calc_1x2_from_xg_dixon_coles(self, xg_home, xg_away, rho=0.12):
         p_home = p_draw = p_away = 0.0
         for gh in range(8):
             ph = self._poisson_prob(xg_home, gh)
             for ga in range(8):
                 pa = self._poisson_prob(xg_away, ga)
-                prob = ph * pa
+                tau = self._dixon_coles_tau(gh, ga, rho)
+                prob = ph * pa * tau
                 if gh > ga:
                     p_home += prob
                 elif gh == ga:
@@ -269,13 +257,14 @@ class Model:
                 else:
                     p_away += prob
         total = p_home + p_draw + p_away
+        # Normalizar por rho
         return {
             "1": round((p_home / total) * 100, 1),
             "X": round((p_draw / total) * 100, 1),
             "2": round((p_away / total) * 100, 1),
         }
 
-    def _montecarlo_6000(self, xg_home, xg_away):
+    def _montecarlo_interval(self, xg_home, xg_away):
         random.seed(int((xg_home*1000 + xg_away*1000)) % 100000)
         c1 = cX = c2 = 0
         for _ in range(6000):
@@ -314,72 +303,74 @@ class Model:
         home = match.get('home','Local')
         away = match.get('away','Visita')
         league = match.get('league','Futbol')
+        league_code = match.get('league_code','')
 
         str_home = self._team_strength(home)
         str_away = self._team_strength(away)
         att_home, def_home, mp_home = self._team_attack_defense(home)
         att_away, def_away, mp_away = self._team_attack_defense(away)
-        form_home = self._team_form(home)
-        form_away = self._team_form(away)
+        form_home = self._team_form_ema(home)
+        form_away = self._team_form_ema(away)
+        home_adv = self._get_home_adv(league_code, league)
 
         if home in self.team_stats and self.team_stats[home].get("mp",0) > 0:
             s_home = self.team_stats[home]
-            s_away = self.team_stats.get(away, {"mp":0, "avg_for":1.2, "avg_against":1.2, "attack":1.0, "defense":1.0})
-            # Poisson real: ataque_home * (2 - defensa_away) * factor localia
-            xg_home = round((s_home.get("avg_for", att_home) * 0.6 + (2 - s_away.get("avg_against", def_away)) * 0.4) * 1.12 + form_home, 2)
-            xg_away = round((s_away.get("avg_for", att_away) * 0.6 + (2 - s_home.get("avg_against", def_home)) * 0.4) * 0.92 + form_away, 2)
+            s_away = self.team_stats.get(away, {"mp":0, "avg_for":1.2, "avg_against":1.2})
+            xg_home = round((s_home.get("avg_for", att_home) * 0.6 + (2 - s_away.get("avg_against", def_away)) * 0.4) * home_adv + form_home, 2)
+            xg_away = round((s_away.get("avg_for", att_away) * 0.6 + (2 - s_home.get("avg_against", def_home)) * 0.4) * (2 - home_adv + 1) /2 *0.92 + form_away, 2)
             xg_home = max(0.15, xg_home)
             xg_away = max(0.15, xg_away)
-            xg_source = f"REAL team_stats {self.team_stats_source} {mp_home}/{mp_away} pj"
+            xg_source = f"REAL team_stats + HomeAdv {home_adv} {mp_home}/{mp_away} pj"
         elif self.history_loaded and mp_home > 0:
-            xg_home = round((att_home * 0.7 + (2 - def_away) * 0.3) * 1.15, 2)
-            xg_away = round((att_away * 0.7 + (2 - def_home) * 0.3) * 0.95, 2)
+            xg_home = round((att_home * 0.7 + (2 - def_away) * 0.3) * home_adv, 2)
+            xg_away = round((att_away * 0.7 + (2 - def_home) * 0.3) * 0.92, 2)
             xg_home = max(0.2, xg_home + form_home)
             xg_away = max(0.2, xg_away + form_away)
-            xg_source = f"ELO {self.elo_source} {mp_home}/{mp_away} pj"
+            xg_source = f"ELO MOV + HomeAdv {home_adv}"
         elif self.history_loaded:
-            xg_home = round(1.35 * str_home * 1.15, 2)
+            xg_home = round(1.35 * str_home * home_adv, 2)
             xg_away = round(1.15 * str_away * 0.95, 2)
-            xg_source = f"REAL ELO tabla {self.elo_source} 330 equipos"
+            xg_source = f"REAL ELO tabla {self.elo_source} HomeAdv {home_adv}"
         else:
             xg_home = round(1.35 * str_home * 1.2, 2)
             xg_away = round(1.15 * str_away, 2)
             xg_source = "FALLBACK hash"
 
-        prob_poisson = self._calc_1x2_from_xg(xg_home, xg_away)
+        prob_poisson_dc = self._calc_1x2_from_xg_dixon_coles(xg_home, xg_away, rho=0.12)
+
         diff = str_home - str_away
-        elo_adj = diff * 18
-        prob_elo = {
-            "1": max(5, min(85, prob_poisson["1"] + elo_adj)),
-            "X": prob_poisson["X"],
-            "2": max(5, min(85, prob_poisson["2"] - elo_adj)),
+        elo_adj = diff * 20
+        prob_elo_mov = {
+            "1": max(5, min(85, prob_poisson_dc["1"] + elo_adj)),
+            "X": prob_poisson_dc["X"],
+            "2": max(5, min(85, prob_poisson_dc["2"] - elo_adj)),
         }
-        s = prob_elo["1"]+prob_elo["X"]+prob_elo["2"]
-        prob_elo = {k: round(v/s*100,1) for k,v in prob_elo.items()}
+        s = prob_elo_mov["1"]+prob_elo_mov["X"]+prob_elo_mov["2"]
+        prob_elo_mov = {k: round(v/s*100,1) for k,v in prob_elo_mov.items()}
 
         if home in self.team_stats:
             form_diff = form_home - form_away
-            prob_forma = {
-                "1": max(5, min(85, prob_poisson["1"] + form_diff*30)),
-                "X": prob_poisson["X"],
-                "2": max(5, min(85, prob_poisson["2"] - form_diff*30)),
+            prob_forma_ema = {
+                "1": max(5, min(85, prob_poisson_dc["1"] + form_diff*35)),
+                "X": prob_poisson_dc["X"],
+                "2": max(5, min(85, prob_poisson_dc["2"] - form_diff*35)),
             }
         else:
             h = int(hashlib.md5((home+away).encode()).hexdigest()[0:2],16) % 20 - 10
-            prob_forma = {
-                "1": max(5, min(85, prob_poisson["1"] + h*0.3)),
-                "X": prob_poisson["X"],
-                "2": max(5, min(85, prob_poisson["2"] - h*0.3)),
+            prob_forma_ema = {
+                "1": max(5, min(85, prob_poisson_dc["1"] + h*0.3)),
+                "X": prob_poisson_dc["X"],
+                "2": max(5, min(85, prob_poisson_dc["2"] - h*0.3)),
             }
-        s = prob_forma["1"]+prob_forma["X"]+prob_forma["2"]
-        prob_forma = {k: round(v/s*100,1) for k,v in prob_forma.items()}
+        s = prob_forma_ema["1"]+prob_forma_ema["X"]+prob_forma_ema["2"]
+        prob_forma_ema = {k: round(v/s*100,1) for k,v in prob_forma_ema.items()}
 
-        prob_mc = self._montecarlo_6000(xg_home, xg_away)
+        prob_mc_interval = self._montecarlo_interval(xg_home, xg_away)
 
         w = self.weights
-        final_1 = prob_poisson["1"]*w["poisson"] + prob_elo["1"]*w["elo_fuerza"] + prob_forma["1"]*w["forma"] + prob_mc["1"]*w["montecarlo"]
-        final_X = prob_poisson["X"]*w["poisson"] + prob_elo["X"]*w["elo_fuerza"] + prob_forma["X"]*w["forma"] + prob_mc["X"]*w["montecarlo"]
-        final_2 = prob_poisson["2"]*w["poisson"] + prob_elo["2"]*w["elo_fuerza"] + prob_forma["2"]*w["forma"] + prob_mc["2"]*w["montecarlo"]
+        final_1 = prob_poisson_dc["1"]*w["poisson_dc"] + prob_elo_mov["1"]*w["elo_mov"] + prob_forma_ema["1"]*w["forma_ema"]
+        final_X = prob_poisson_dc["X"]*w["poisson_dc"] + prob_elo_mov["X"]*w["elo_mov"] + prob_forma_ema["X"]*w["forma_ema"]
+        final_2 = prob_poisson_dc["2"]*w["poisson_dc"] + prob_elo_mov["2"]*w["elo_mov"] + prob_forma_ema["2"]*w["forma_ema"]
 
         total = final_1 + final_X + final_2
         probs = {
@@ -453,16 +444,17 @@ class Model:
             elo_home = self.elo.get(home, 1500)
             elo_away = self.elo.get(away, 1500)
             explic = [
-                f"xG {xg_home}-{xg_away} ({xg_source})",
-                f"ELO {home}={elo_home:.0f} vs {away}={elo_away:.0f} diff={elo_home-elo_away:.0f} src={self.elo_source}",
-                f"Ataque {home}={att_home:.2f} Def={def_home:.2f} | {away} Att={att_away:.2f} Def={def_away:.2f} src={self.team_stats_source}",
-                f"MonteCarlo 6000: 1={prob_mc['1']}% X={prob_mc['X']}% 2={prob_mc['2']}%"
+                f"xG {xg_home}-{xg_away} ({xg_source}) Dixon-Coles rho=0.12",
+                f"ELO MOV {home}={elo_home:.0f} vs {away}={elo_away:.0f} diff={elo_home-elo_away:.0f} src={self.elo_source}",
+                f"Ataque {home}={att_home:.2f} Def={def_home:.2f} | {away} Att={att_away:.2f} Def={def_away:.2f} HomeAdv={home_adv} src={self.team_stats_source}",
+                f"Forma EMA {home}={form_home:.3f} {away}={form_away:.3f}",
+                f"MC validador 6000: 1={prob_mc_interval['1']}% X={prob_mc_interval['X']}% 2={prob_mc_interval['2']}%"
             ]
         else:
             explic = [
                 f"xG {xg_home}-{xg_away} ({xg_source})",
-                f"Fuerza {home}={str_home:.2f} vs {away}={str_away:.2f}",
-                f"MonteCarlo 6000: 1={prob_mc['1']}% X={prob_mc['X']}% 2={prob_mc['2']}%"
+                f"Fuerza {home}={str_home:.2f} vs {away}={str_away:.2f} HomeAdv={home_adv}",
+                f"MC validador 6000: 1={prob_mc_interval['1']}% X={prob_mc_interval['X']}% 2={prob_mc_interval['2']}%"
             ]
 
         return {
@@ -477,18 +469,19 @@ class Model:
             "xg_away": xg_away,
             "probabilities": probs,
             "prob_details": {
-                "poisson": prob_poisson,
-                "elo": prob_elo,
-                "forma": prob_forma,
-                "montecarlo": prob_mc,
-                "weights": w
+                "poisson_dc": prob_poisson_dc,
+                "elo_mov": prob_elo_mov,
+                "forma_ema": prob_forma_ema,
+                "montecarlo_validador": prob_mc_interval,
+                "weights": w,
+                "home_adv": home_adv
             },
             "favorite": fav,
             "confidence": confianza,
             "evidence": evidencia,
             "sufficiency": suf,
             "risk": riesgo,
-            "source": f"Ensemble REAL {w['poisson']*100:.0f}%Poisson/{w['elo_fuerza']*100:.0f}%ELO/{w['forma']*100:.0f}%Forma/{w['montecarlo']*100:.0f}%MC6000 - {self.history_count} equipos {self.elo_source}+{self.team_stats_source}" if self.history_loaded else f"Ensemble {w['poisson']*100:.0f}%Poisson",
+            "source": f"V117.1 Dixon-Coles {w['poisson_dc']*100:.0f}%PoissonDC/{w['elo_mov']*100:.0f}%ELO_MOV/{w['forma_ema']*100:.0f}%FormaEMA + MC validador - {self.history_count} equipos HomeAdv {home_adv}",
             "explicabilidad": explic,
             "home_score": match.get('home_score'),
             "away_score": match.get('away_score'),
@@ -497,7 +490,7 @@ class Model:
             "status_detail": match.get('status_detail',''),
             "resultado_real": resultado_real,
             "acierto": acierto,
-            "transparencia": "Probabilidad != recomendacion segura. Suma 1X2 ~100%.",
+            "transparencia": "Probabilidad != recomendacion segura. Suma 1X2 ~100% Dixon-Coles corrige empates.",
             "prediction_fast": fast,
             "elo_home": self.elo.get(home, 1500) if self.history_loaded else None,
             "elo_away": self.elo.get(away, 1500) if self.history_loaded else None,
@@ -507,5 +500,7 @@ class Model:
             "attack_home": att_home,
             "defense_home": def_home,
             "attack_away": att_away,
-            "defense_away": def_away
+            "defense_away": def_away,
+            "home_adv": home_adv,
+            "mc_interval": prob_mc_interval
         }
