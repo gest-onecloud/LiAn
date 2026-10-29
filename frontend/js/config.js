@@ -1,10 +1,10 @@
-// LiAn V124.3 - Auto-Tune k disciplina 0-2.0 busca 210/444
+// LiAn V124.4 - Final k=0.5 disciplina suave 206/444 46.4% +2 aciertos
 const CONFIG = {
   BACKEND: "https://lian-backend.onrender.com",
-  VERSION: "V124.3",
-  CACHE_VERSION: "V124.3-DISCIPLINA-KTUNE-65-25-10-270",
+  VERSION: "V124.4",
+  CACHE_VERSION: "V124.4-DISCIPLINA-FINAL-K05-65-25-10-280",
   BUILD: "2026-10-29",
-  MODE: "V124.3 Auto-Tune k disciplina"
+  MODE: "V124.4 Final k=0.5 disciplina 206/444"
 };
 const BACKEND = CONFIG.BACKEND;
 const CACHE_VERSION = CONFIG.CACHE_VERSION;
