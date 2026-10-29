@@ -764,23 +764,23 @@ class Handler(BaseHTTPRequestHandler):
                         m['home_last_date'] = last_home
                         delta = (m_date - parse_d(last_home)).days
                         m['home_rest_days'] = delta
-                        print(f"[improve V122.3] {home} last {last_home} -> {delta}d rest")
+                        print(f"[improve V123.2] {home} last {last_home} -> {delta}d rest REAL")
                     else:
-                        print(f"[improve V122.3] {home} no last match found, default 7d")
-                        m['home_rest_days'] = 15  # Forzar oxido medio para test Monterrey
+                        print(f"[improve V123.2] {home} no last match found, default 7d OPTIMO real")
+                        m['home_rest_days'] = 7  # V123.2: ya no forzamos 15d, calculo real
 
                     if last_away:
                         m['away_last_date'] = last_away
                         delta = (m_date - parse_d(last_away)).days
                         m['away_rest_days'] = delta
-                        print(f"[improve V122.3] {away} last {last_away} -> {delta}d rest")
+                        print(f"[improve V123.2] {away} last {last_away} -> {delta}d rest REAL")
                     else:
                         m['away_rest_days'] = 7
 
                 except Exception as e_rest:
                     import traceback
-                    print(f"[improve V122.3] rest calc error: {e_rest}\n{traceback.format_exc()[:500]}")
-                    m['home_rest_days'] = 15
+                    print(f"[improve V123.2] rest calc error: {e_rest}\n{traceback.format_exc()[:500]}")
+                    m['home_rest_days'] = 7
                     m['away_rest_days'] = 7
 
                 # Predicción COMPLETA con MonteCarlo 6000 - V121.3 fix MC 0% + V122 rest
@@ -827,7 +827,7 @@ class Handler(BaseHTTPRequestHandler):
                         away: model.elo.get(away, 1500)
                     },
                     "improved": True,
-                    "message": f"Mejorado V122.2 con MC6000 + descanso {pred.get('home_rest_days','?')}d vs {pred.get('away_rest_days','?')}d"
+                    "message": f"Mejorado V123.2 con MC6000 + descanso REAL {pred.get('home_rest_days','?')}d vs {pred.get('away_rest_days','?')}d"
                 }
 
                 self.send_response(200)
