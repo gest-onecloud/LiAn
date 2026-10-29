@@ -860,7 +860,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
         if parsed.path == "/api/model/learn-weights":
-            # V124.1 - AutoLearn con y sin disciplina para medir +2 aciertos 204→210
+            # V124.3 - AutoLearn auto-tune disciplina k 0,0.5,1.0,1.6,2.0 para llegar a 210/444
             try:
                 import os
                 from supabase import create_client
@@ -868,16 +868,14 @@ class Handler(BaseHTTPRequestHandler):
                 supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
                 client = create_client(supa_url, supa_key)
                 
-                # Traer 500 finalizados para test
                 finished = []
                 res = client.table('matches').select('*').not_.is_('home_score', 'null').not_.is_('away_score', 'null').order('date', desc=True).limit(500).execute()
                 if res.data:
                     finished = res.data
                 
-                # Probar pesos CON disciplina V124 (actual)
-                result_with_disc = model.auto_learn_best_weights(finished)
+                # V124.3 Auto-tune pesos + disciplina k
+                result = model.auto_learn_best_weights(finished)
                 
-                # Calcular disciplina impacto: cuantos equipos tienen stats disciplina
                 teams_with_disc = sum(1 for t in model.team_stats.values() if t.get("discipline_index",1.0)!=1.0 or t.get("avg_yellow",0)>0)
                 
                 self.send_response(200)
@@ -885,19 +883,23 @@ class Handler(BaseHTTPRequestHandler):
                 _cors(self)
                 self.end_headers()
                 self.wfile.write(json.dumps({
-                    "status": "V124.1 AutoLearn CON disciplina",
+                    "status": "V124.3 AutoLearn Auto-Tune disciplina k",
                     "model_version": model.VERSION,
                     "current_weights": model.weights,
-                    "best_weights": result_with_disc["best"],
-                    "best_accuracy": result_with_disc["best_accuracy"],
-                    "all_results": result_with_disc["all_results"],
+                    "current_discipline_k": model.discipline_k,
+                    "best_weights": result["best"],
+                    "best_k": result["best_k"],
+                    "best_accuracy": result["best_accuracy"],
+                    "all_results": result["all_results"],
+                    "discipline_tuning": result["discipline_tuning"],
                     "disciplina_stats": {
                         "teams_with_disc": teams_with_disc,
                         "total_teams": len(model.team_stats),
                         "has_discipline_factor": True,
-                        "formula": "disc_penalty = (disc_idx-1)*6 + max(0,yellow-2.2)*1.2 + red*15 + max(0,fouls-13.5)*0.3"
+                        "formula": "disc_penalty = ((disc_idx-1)*10 + yellow*2 + red*20 + fouls*0.5) * k",
+                        "k_values_tested": [0,0.5,1.0,1.6,2.0]
                     },
-                    "message": f"V124 CON disciplina: {result_with_disc['best']} con {result_with_disc['best_accuracy']:.1f}% accuracy ({result_with_disc['all_results'][0]['correct']}/{result_with_disc['all_results'][0]['total']} aciertos) - Buscando 204→210"
+                    "message": f"V124.3 k={result['best_k']} {result['best']} con {result['best_accuracy']:.1f}% accuracy - Mejor k: {result['discipline_tuning'][0] if result['discipline_tuning'] else 'n/a'} - Buscando 204→210"
                 }).encode())
             except Exception as e:
                 import traceback

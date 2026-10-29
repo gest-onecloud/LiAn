@@ -17,10 +17,11 @@ except:
     HAS_YAML = False
 
 class Model:
-    VERSION = "V124.2 RestDays Progresivo + Disciplinary + AutoLearn 2859 + Dixon-Coles - 330+330"
+    VERSION = "V124.3 RestDays Progresivo + Disciplinary + AutoLearn 2859 + Dixon-Coles - 330+330"
 
     def __init__(self, repo=None):
         self.weights = {"poisson_dc": 0.65, "elo_mov": 0.25, "forma_ema": 0.10}  # V123.1 Best: 65/25/10 = 45.95% (204/444) aprendido de /api/model/learn-weights
+        self.discipline_k = 1.6  # V124.2 Tuned x1.6, V124.3 auto-tune 0,0.5,1.0,1.6,2.0
         weights_path = Path("config/weights.yaml")
         if weights_path.exists() and HAS_YAML:
             try:
@@ -350,8 +351,8 @@ class Model:
         else:
             return {"attack": 0.82, "defense": 1.15, "label": f"{rest_days}d OXIDO CRITICO", "prob_penalty": -9, "conf_penalty": 2, "tipo": "oxido_critico"}
 
-    def auto_learn_best_weights(self, matches_finished, test_weights_list=None):
-        """V123 - Prueba combinaciones de pesos y retorna la mejor por accuracy"""
+    def auto_learn_best_weights(self, matches_finished, test_weights_list=None, test_discipline_k=None):
+        """V124.3 - Prueba pesos + disciplina k (0,0.5,1.0,1.6,2.0) para llegar a 210/444"""
         if test_weights_list is None:
             test_weights_list = [
                 {"poisson_dc": 0.75, "elo_mov": 0.20, "forma_ema": 0.05},
@@ -361,49 +362,60 @@ class Model:
                 {"poisson_dc": 0.70, "elo_mov": 0.15, "forma_ema": 0.15},
                 {"poisson_dc": 0.65, "elo_mov": 0.20, "forma_ema": 0.15},
             ]
+        if test_discipline_k is None:
+            test_discipline_k = [0, 0.5, 1.0, 1.6, 2.0]  # V124.3 auto-tune
         
         best_acc = 0
         best_w = self.weights
+        best_k = self.discipline_k
         results = []
+        discipline_results = []
         
-        for w in test_weights_list:
-            correct = 0
-            total = 0
-            for m in matches_finished[:500]:  # test con 500 partidos
-                try:
-                    # Temporarily set weights
-                    orig_w = self.weights
-                    self.weights = w
-                    pred = self.predictions_for(m, fast=True)
-                    self.weights = orig_w
-                    
-                    # Check acierto
-                    hs = m.get('home_score')
-                    aw = m.get('away_score')
-                    if hs is None or aw is None:
+        for k in test_discipline_k:
+            orig_k = self.discipline_k
+            self.discipline_k = k
+            for w in test_weights_list:
+                correct = 0
+                total = 0
+                for m in matches_finished[:500]:
+                    try:
+                        orig_w = self.weights
+                        self.weights = w
+                        pred = self.predictions_for(m, fast=True)
+                        self.weights = orig_w
+                        hs = m.get('home_score')
+                        aw = m.get('away_score')
+                        if hs is None or aw is None:
+                            continue
+                        if hs > aw:
+                            real = "1"
+                        elif hs == aw:
+                            real = "X"
+                        else:
+                            real = "2"
+                        max_prob = max(pred['probabilities'], key=lambda k: pred['probabilities'][k])
+                        if max_prob == real:
+                            correct += 1
+                        total += 1
+                    except:
                         continue
-                    if hs > aw:
-                        real = "1"
-                    elif hs == aw:
-                        real = "X"
-                    else:
-                        real = "2"
-                    max_prob = max(pred['probabilities'], key=lambda k: pred['probabilities'][k])
-                    if max_prob == real:
-                        correct += 1
-                    total += 1
-                except:
-                    continue
-            
-            acc = (correct/total*100) if total>0 else 0
-            results.append({"weights": w, "accuracy": round(acc,2), "correct": correct, "total": total})
-            if acc > best_acc:
-                best_acc = acc
-                best_w = w
+                acc = (correct/total*100) if total>0 else 0
+                entry = {"weights": w, "discipline_k": k, "accuracy": round(acc,2), "correct": correct, "total": total}
+                results.append(entry)
+                if acc > best_acc:
+                    best_acc = acc
+                    best_w = w
+                    best_k = k
+            # Track best per k
+            per_k_best = max([r for r in results if r['discipline_k']==k], key=lambda x: x['accuracy'], default={"accuracy":0})
+            discipline_results.append({"k": k, "best_accuracy": per_k_best.get('accuracy',0), "best_correct": per_k_best.get('correct',0), "best_weights": per_k_best.get('weights',{})})
+            self.discipline_k = orig_k
         
-        # Sort by accuracy desc
+        # Restore best k
+        self.discipline_k = best_k
         results.sort(key=lambda x: x['accuracy'], reverse=True)
-        return {"best": best_w, "best_accuracy": best_acc, "all_results": results}
+        discipline_results.sort(key=lambda x: x['best_accuracy'], reverse=True)
+        return {"best": best_w, "best_k": best_k, "best_accuracy": best_acc, "all_results": results[:10], "discipline_tuning": discipline_results}
 
 
     def predictions_for(self, match, fast=False):
@@ -452,9 +464,9 @@ class Model:
             disc_away = s_away.get("discipline_index", 1.0)
             poss_home = s_home.get("avg_possession", 50)
             poss_away = s_away.get("avg_possession", 50)
-            # V124.2 Equipo indisciplinado baja mas: 8% ataque y 10% defensa
-            disc_factor_home = 1.0 - (disc_home - 1.0) * 0.25
-            disc_factor_away = 1.0 - (disc_away - 1.0) * 0.25
+            # V124.3 Equipo indisciplinado baja mas: usa discipline_k auto-tune
+            disc_factor_home = 1.0 - (disc_home - 1.0) * 0.25 * self.discipline_k
+            disc_factor_away = 1.0 - (disc_away - 1.0) * 0.25 * self.discipline_k
             poss_factor_home = 0.9 + (poss_home - 50) * 0.01  # 60% posesion -> 1.0 factor
             poss_factor_away = 0.9 + (poss_away - 50) * 0.01
 
@@ -486,7 +498,7 @@ class Model:
         rest_penalty_home = rest_home_factor["prob_penalty"]
         rest_penalty_away = rest_away_factor["prob_penalty"]
 
-        # V124.2 Opcion A Tuned x1.6 disciplina + 210/444 - Disciplina: amarillas/rojas/faltas penalizan prob
+        # V124.3 Opcion A Auto-Tune k disciplina 0-2.0 busca 210/444 - Disciplina: amarillas/rojas/faltas penalizan prob
         # Equipo muy indisciplinado (disc_index >1.2) pierde 3-8% prob, aumenta empate y rival
         disc_penalty_home = 0
         disc_penalty_away = 0
@@ -497,15 +509,15 @@ class Model:
                 y_h = s_h.get("avg_yellow", 2.0)
                 r_h = s_h.get("avg_red", 0.08)
                 f_h = s_h.get("avg_fouls", 13.0)
-                # V124.2 Formula mas agresiva: busca +2 a +6 aciertos 204->210
-                disc_penalty_home = (disc_idx_h - 1.0)*10 + max(0, y_h - 2.2)*2.0 + r_h*20 + max(0, f_h - 13.5)*0.5
+                # V124.3 Formula con discipline_k auto-tune 0,0.5,1.0,1.6,2.0
+                disc_penalty_home = ((disc_idx_h - 1.0)*10 + max(0, y_h - 2.2)*2.0 + r_h*20 + max(0, f_h - 13.5)*0.5) * self.discipline_k
             if away in self.team_stats:
                 s_a = self.team_stats[away]
                 disc_idx_a = s_a.get("discipline_index", 1.0)
                 y_a = s_a.get("avg_yellow", 2.0)
                 r_a = s_a.get("avg_red", 0.08)
                 f_a = s_a.get("avg_fouls", 13.0)
-                disc_penalty_away = (disc_idx_a - 1.0)*10 + max(0, y_a - 2.2)*2.0 + r_a*20 + max(0, f_a - 13.5)*0.5
+                disc_penalty_away = ((disc_idx_a - 1.0)*10 + max(0, y_a - 2.2)*2.0 + r_a*20 + max(0, f_a - 13.5)*0.5) * self.discipline_k
         except Exception as e_disc:
             print(f"[V124 discipline] error {e_disc}")
 
