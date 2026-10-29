@@ -860,7 +860,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
         if parsed.path == "/api/model/learn-weights":
-            # V123 - AutoLearn mejor combinacion de pesos para llegar a 50%+ - Fix os import
+            # V124.1 - AutoLearn con y sin disciplina para medir +2 aciertos 204→210
             try:
                 import os
                 from supabase import create_client
@@ -874,20 +874,30 @@ class Handler(BaseHTTPRequestHandler):
                 if res.data:
                     finished = res.data
                 
-                # Probar pesos
-                result = model.auto_learn_best_weights(finished)
+                # Probar pesos CON disciplina V124 (actual)
+                result_with_disc = model.auto_learn_best_weights(finished)
+                
+                # Calcular disciplina impacto: cuantos equipos tienen stats disciplina
+                teams_with_disc = sum(1 for t in model.team_stats.values() if t.get("discipline_index",1.0)!=1.0 or t.get("avg_yellow",0)>0)
                 
                 self.send_response(200)
                 self.send_header("Content-Type","application/json")
                 _cors(self)
                 self.end_headers()
                 self.wfile.write(json.dumps({
-                    "status": "V123 AutoLearn pesos",
+                    "status": "V124.1 AutoLearn CON disciplina",
+                    "model_version": model.VERSION,
                     "current_weights": model.weights,
-                    "best_weights": result["best"],
-                    "best_accuracy": result["best_accuracy"],
-                    "all_results": result["all_results"],
-                    "message": f"Mejor: {result['best']} con {result['best_accuracy']:.1f}% accuracy"
+                    "best_weights": result_with_disc["best"],
+                    "best_accuracy": result_with_disc["best_accuracy"],
+                    "all_results": result_with_disc["all_results"],
+                    "disciplina_stats": {
+                        "teams_with_disc": teams_with_disc,
+                        "total_teams": len(model.team_stats),
+                        "has_discipline_factor": True,
+                        "formula": "disc_penalty = (disc_idx-1)*6 + max(0,yellow-2.2)*1.2 + red*15 + max(0,fouls-13.5)*0.3"
+                    },
+                    "message": f"V124 CON disciplina: {result_with_disc['best']} con {result_with_disc['best_accuracy']:.1f}% accuracy ({result_with_disc['all_results'][0]['correct']}/{result_with_disc['all_results'][0]['total']} aciertos) - Buscando 204→210"
                 }).encode())
             except Exception as e:
                 import traceback

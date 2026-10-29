@@ -17,7 +17,7 @@ except:
     HAS_YAML = False
 
 class Model:
-    VERSION = "V124 RestDays Progresivo + Disciplinary + AutoLearn 2859 + Dixon-Coles - 330+330"
+    VERSION = "V124.2 RestDays Progresivo + Disciplinary + AutoLearn 2859 + Dixon-Coles - 330+330"
 
     def __init__(self, repo=None):
         self.weights = {"poisson_dc": 0.65, "elo_mov": 0.25, "forma_ema": 0.10}  # V123.1 Best: 65/25/10 = 45.95% (204/444) aprendido de /api/model/learn-weights
@@ -452,9 +452,9 @@ class Model:
             disc_away = s_away.get("discipline_index", 1.0)
             poss_home = s_home.get("avg_possession", 50)
             poss_away = s_away.get("avg_possession", 50)
-            # Equipo indisciplinado (disc>1.2) baja ataque 5% y defensa 8%
-            disc_factor_home = 1.0 - (disc_home - 1.0) * 0.15
-            disc_factor_away = 1.0 - (disc_away - 1.0) * 0.15
+            # V124.2 Equipo indisciplinado baja mas: 8% ataque y 10% defensa
+            disc_factor_home = 1.0 - (disc_home - 1.0) * 0.25
+            disc_factor_away = 1.0 - (disc_away - 1.0) * 0.25
             poss_factor_home = 0.9 + (poss_home - 50) * 0.01  # 60% posesion -> 1.0 factor
             poss_factor_away = 0.9 + (poss_away - 50) * 0.01
 
@@ -486,7 +486,7 @@ class Model:
         rest_penalty_home = rest_home_factor["prob_penalty"]
         rest_penalty_away = rest_away_factor["prob_penalty"]
 
-        # V124 Opcion A - Disciplina: amarillas/rojas/faltas penalizan prob
+        # V124.2 Opcion A Tuned x1.6 disciplina + 210/444 - Disciplina: amarillas/rojas/faltas penalizan prob
         # Equipo muy indisciplinado (disc_index >1.2) pierde 3-8% prob, aumenta empate y rival
         disc_penalty_home = 0
         disc_penalty_away = 0
@@ -497,15 +497,15 @@ class Model:
                 y_h = s_h.get("avg_yellow", 2.0)
                 r_h = s_h.get("avg_red", 0.08)
                 f_h = s_h.get("avg_fouls", 13.0)
-                # Formula: disc >1 penaliza, amarillas >2.5, rojas >0.1, faltas >14
-                disc_penalty_home = (disc_idx_h - 1.0)*6 + max(0, y_h - 2.2)*1.2 + r_h*15 + max(0, f_h - 13.5)*0.3
+                # V124.2 Formula mas agresiva: busca +2 a +6 aciertos 204->210
+                disc_penalty_home = (disc_idx_h - 1.0)*10 + max(0, y_h - 2.2)*2.0 + r_h*20 + max(0, f_h - 13.5)*0.5
             if away in self.team_stats:
                 s_a = self.team_stats[away]
                 disc_idx_a = s_a.get("discipline_index", 1.0)
                 y_a = s_a.get("avg_yellow", 2.0)
                 r_a = s_a.get("avg_red", 0.08)
                 f_a = s_a.get("avg_fouls", 13.0)
-                disc_penalty_away = (disc_idx_a - 1.0)*6 + max(0, y_a - 2.2)*1.2 + r_a*15 + max(0, f_a - 13.5)*0.3
+                disc_penalty_away = (disc_idx_a - 1.0)*10 + max(0, y_a - 2.2)*2.0 + r_a*20 + max(0, f_a - 13.5)*0.5
         except Exception as e_disc:
             print(f"[V124 discipline] error {e_disc}")
 
