@@ -17,10 +17,10 @@ except:
     HAS_YAML = False
 
 class Model:
-    VERSION = "V124.4 RestDays Progresivo + Disciplinary + AutoLearn 2859 + Dixon-Coles - 330+330"
+    VERSION = "V124.4.1 RestDays Progresivo + Disciplinary + AutoLearn 2859 + Dixon-Coles - 330+330"
 
     def __init__(self, repo=None):
-        self.weights = {"poisson_dc": 0.65, "elo_mov": 0.25, "forma_ema": 0.10}  # V124.3 Best: 65/25/10 = 46.4% (206/444) k=0.5 disciplina suave
+        self.weights = {"poisson_dc": 0.65, "elo_mov": 0.25, "forma_ema": 0.10}  # V124.4.1 BEST 65/25/10 = 46.4% (206/444) k=0.5
         self.discipline_k = 0.5  # V124.3 BEST: k=0.5 = 206/444 (46.4%) +2 aciertos vs 204/444, k=0=205/444, k=1.0=204/444, k=1.6=203/444
         weights_path = Path("config/weights.yaml")
         if weights_path.exists() and HAS_YAML:
@@ -498,7 +498,7 @@ class Model:
         rest_penalty_home = rest_home_factor["prob_penalty"]
         rest_penalty_away = rest_away_factor["prob_penalty"]
 
-        # V124.4 Opcion A Final k=0.5 disciplina suave 206/444 46.4% +2 aciertos - Disciplina: amarillas/rojas/faltas penalizan prob
+        # V124.4.1 Opcion A Final FIX pesos 65/25/10 k=0.5 206/444 46.4% +2 - Disciplina: amarillas/rojas/faltas penalizan prob
         # Equipo muy indisciplinado (disc_index >1.2) pierde 3-8% prob, aumenta empate y rival
         disc_penalty_home = 0
         disc_penalty_away = 0
