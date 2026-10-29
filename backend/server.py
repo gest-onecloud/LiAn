@@ -244,7 +244,8 @@ class Handler(BaseHTTPRequestHandler):
                 from datetime import date as date_obj, timedelta
                 import os
                 days_ahead = int(qs.get('days',['14'])[0])
-                league_filter = qs.get('league',[''])[0].strip().split()[0].strip()
+                league_raw = (qs.get('league',[''])[0] if qs.get('league') else '')
+                league_filter = league_raw.strip().split()[0].strip() if league_raw.strip() else ''
 
                 # Intentar cargar fixture_sync con fallback si falla
                 try:

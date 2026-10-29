@@ -17,7 +17,7 @@ except:
     HAS_YAML = False
 
 class Model:
-    VERSION = "V123.3 RestDays Progresivo + Disciplinary + AutoLearn 2859 + Dixon-Coles - 330+330"
+    VERSION = "V124 RestDays Progresivo + Disciplinary + AutoLearn 2859 + Dixon-Coles - 330+330"
 
     def __init__(self, repo=None):
         self.weights = {"poisson_dc": 0.65, "elo_mov": 0.25, "forma_ema": 0.10}  # V123.1 Best: 65/25/10 = 45.95% (204/444) aprendido de /api/model/learn-weights
@@ -485,10 +485,34 @@ class Model:
         # V122 - penalizacion fatiga en ELO: equipo cansado pierde prob
         rest_penalty_home = rest_home_factor["prob_penalty"]
         rest_penalty_away = rest_away_factor["prob_penalty"]
+
+        # V124 Opcion A - Disciplina: amarillas/rojas/faltas penalizan prob
+        # Equipo muy indisciplinado (disc_index >1.2) pierde 3-8% prob, aumenta empate y rival
+        disc_penalty_home = 0
+        disc_penalty_away = 0
+        try:
+            if home in self.team_stats:
+                s_h = self.team_stats[home]
+                disc_idx_h = s_h.get("discipline_index", 1.0)
+                y_h = s_h.get("avg_yellow", 2.0)
+                r_h = s_h.get("avg_red", 0.08)
+                f_h = s_h.get("avg_fouls", 13.0)
+                # Formula: disc >1 penaliza, amarillas >2.5, rojas >0.1, faltas >14
+                disc_penalty_home = (disc_idx_h - 1.0)*6 + max(0, y_h - 2.2)*1.2 + r_h*15 + max(0, f_h - 13.5)*0.3
+            if away in self.team_stats:
+                s_a = self.team_stats[away]
+                disc_idx_a = s_a.get("discipline_index", 1.0)
+                y_a = s_a.get("avg_yellow", 2.0)
+                r_a = s_a.get("avg_red", 0.08)
+                f_a = s_a.get("avg_fouls", 13.0)
+                disc_penalty_away = (disc_idx_a - 1.0)*6 + max(0, y_a - 2.2)*1.2 + r_a*15 + max(0, f_a - 13.5)*0.3
+        except Exception as e_disc:
+            print(f"[V124 discipline] error {e_disc}")
+
         prob_elo_mov = {
-            "1": max(5, min(85, prob_poisson_dc["1"] + elo_adj + rest_penalty_home)),
-            "X": prob_poisson_dc["X"] - (rest_penalty_home + rest_penalty_away)/2 * -0.3,  # fatiga aumenta empate
-            "2": max(5, min(85, prob_poisson_dc["2"] - elo_adj + rest_penalty_away)),
+            "1": max(5, min(85, prob_poisson_dc["1"] + elo_adj + rest_penalty_home - disc_penalty_home)),
+            "X": prob_poisson_dc["X"] - (rest_penalty_home + rest_penalty_away)/2 * -0.3 + (disc_penalty_home + disc_penalty_away)*0.2,  # indisciplina aumenta empate por precaucion
+            "2": max(5, min(85, prob_poisson_dc["2"] - elo_adj + rest_penalty_away - disc_penalty_away)),
         }
         s = prob_elo_mov["1"]+prob_elo_mov["X"]+prob_elo_mov["2"]
         prob_elo_mov = {k: round(v/s*100,1) for k,v in prob_elo_mov.items()}
