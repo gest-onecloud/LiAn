@@ -846,8 +846,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
         if parsed.path == "/api/model/learn-weights":
-            # V123 - AutoLearn mejor combinacion de pesos para llegar a 50%+
+            # V123 - AutoLearn mejor combinacion de pesos para llegar a 50%+ - Fix os import
             try:
+                import os
                 from supabase import create_client
                 supa_url = os.environ.get("SUPABASE_URL")
                 supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
