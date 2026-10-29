@@ -17,10 +17,10 @@ except:
     HAS_YAML = False
 
 class Model:
-    VERSION = "V122.2.2 RestDays Progresivo + Disciplinary + AutoLearn 2859 + Dixon-Coles - 330+330"
+    VERSION = "V123.2 RestDays Progresivo + Disciplinary + AutoLearn 2859 + Dixon-Coles - 330+330"
 
     def __init__(self, repo=None):
-        self.weights = {"poisson_dc": 0.75, "elo_mov": 0.20, "forma_ema": 0.05}  # Aprendido: Poisson 75% es mejor (local 44% vs visita 31%)
+        self.weights = {"poisson_dc": 0.70, "elo_mov": 0.20, "forma_ema": 0.10}  # V123 Test: 70/20/10 para subir a 50%+ (Forma EMA sube de 5% a 10%)
         weights_path = Path("config/weights.yaml")
         if weights_path.exists() and HAS_YAML:
             try:
@@ -349,6 +349,62 @@ class Model:
             return {"attack": 0.87, "defense": 1.10, "label": f"{rest_days}d OXIDO ALTO", "prob_penalty": -6, "conf_penalty": 2, "tipo": "oxido_alto"}
         else:
             return {"attack": 0.82, "defense": 1.15, "label": f"{rest_days}d OXIDO CRITICO", "prob_penalty": -9, "conf_penalty": 2, "tipo": "oxido_critico"}
+
+    def auto_learn_best_weights(self, matches_finished, test_weights_list=None):
+        """V123 - Prueba combinaciones de pesos y retorna la mejor por accuracy"""
+        if test_weights_list is None:
+            test_weights_list = [
+                {"poisson_dc": 0.75, "elo_mov": 0.20, "forma_ema": 0.05},
+                {"poisson_dc": 0.70, "elo_mov": 0.20, "forma_ema": 0.10},
+                {"poisson_dc": 0.65, "elo_mov": 0.25, "forma_ema": 0.10},
+                {"poisson_dc": 0.60, "elo_mov": 0.25, "forma_ema": 0.15},
+                {"poisson_dc": 0.70, "elo_mov": 0.15, "forma_ema": 0.15},
+                {"poisson_dc": 0.65, "elo_mov": 0.20, "forma_ema": 0.15},
+            ]
+        
+        best_acc = 0
+        best_w = self.weights
+        results = []
+        
+        for w in test_weights_list:
+            correct = 0
+            total = 0
+            for m in matches_finished[:500]:  # test con 500 partidos
+                try:
+                    # Temporarily set weights
+                    orig_w = self.weights
+                    self.weights = w
+                    pred = self.predictions_for(m, fast=True)
+                    self.weights = orig_w
+                    
+                    # Check acierto
+                    hs = m.get('home_score')
+                    aw = m.get('away_score')
+                    if hs is None or aw is None:
+                        continue
+                    if hs > aw:
+                        real = "1"
+                    elif hs == aw:
+                        real = "X"
+                    else:
+                        real = "2"
+                    max_prob = max(pred['probabilities'], key=lambda k: pred['probabilities'][k])
+                    if max_prob == real:
+                        correct += 1
+                    total += 1
+                except:
+                    continue
+            
+            acc = (correct/total*100) if total>0 else 0
+            results.append({"weights": w, "accuracy": round(acc,2), "correct": correct, "total": total})
+            if acc > best_acc:
+                best_acc = acc
+                best_w = w
+        
+        # Sort by accuracy desc
+        results.sort(key=lambda x: x['accuracy'], reverse=True)
+        return {"best": best_w, "best_accuracy": best_acc, "all_results": results}
+
 
     def predictions_for(self, match, fast=False):
         home = match.get('home','Local')

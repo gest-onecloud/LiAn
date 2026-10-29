@@ -844,6 +844,45 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error":str(e),"trace":traceback.format_exc()[:2000]}).encode())
             return
 
+
+        if parsed.path == "/api/model/learn-weights":
+            # V123 - AutoLearn mejor combinacion de pesos para llegar a 50%+
+            try:
+                from supabase import create_client
+                supa_url = os.environ.get("SUPABASE_URL")
+                supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
+                client = create_client(supa_url, supa_key)
+                
+                # Traer 500 finalizados para test
+                finished = []
+                res = client.table('matches').select('*').not_.is_('home_score', 'null').not_.is_('away_score', 'null').order('date', desc=True).limit(500).execute()
+                if res.data:
+                    finished = res.data
+                
+                # Probar pesos
+                result = model.auto_learn_best_weights(finished)
+                
+                self.send_response(200)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "status": "V123 AutoLearn pesos",
+                    "current_weights": model.weights,
+                    "best_weights": result["best"],
+                    "best_accuracy": result["best_accuracy"],
+                    "all_results": result["all_results"],
+                    "message": f"Mejor: {result['best']} con {result['best_accuracy']:.1f}% accuracy"
+                }).encode())
+            except Exception as e:
+                import traceback
+                self.send_response(500)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({"error":str(e),"trace":traceback.format_exc()[:2000]}).encode())
+            return
+
         if parsed.path == "/api/supabase/calc-elo":
 
             # Calcula ELO real desde matches y lo guarda en elo_ratings

@@ -1,10 +1,10 @@
-// LiAn V122.2 - Oxido progresivo 13d+ aumenta + confianza por descanso
+// LiAn V123 - Pesos 70/20/10 + RestDays Progresivo + Confianza ajustada
 const CONFIG = {
   BACKEND: "https://lian-backend.onrender.com",
-  VERSION: "V122.2",
-  CACHE_VERSION: "V122.2-OXIDO-PROG-CONF-250",
-  BUILD: "2026-10-31",
-  MODE: "V122.2 Oxido progresivo + Confianza por descanso"
+  VERSION: "V123",
+  CACHE_VERSION: "V123-PESOS-70-20-10-250",
+  BUILD: "2026-11-01",
+  MODE: "V123 AutoLearn pesos + RestDays + Conf"
 };
 const BACKEND = CONFIG.BACKEND;
 const CACHE_VERSION = CONFIG.CACHE_VERSION;
