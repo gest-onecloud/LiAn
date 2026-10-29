@@ -17,7 +17,7 @@ except:
     HAS_YAML = False
 
 class Model:
-    VERSION = "V124 RestDays Progresivo + Disciplinary + AutoLearn 2859 + Dixon-Coles - 330+330"
+    VERSION = "V124.1 RestDays Progresivo + Disciplinary + AutoLearn 2859 + Dixon-Coles - 330+330"
 
     def __init__(self, repo=None):
         self.weights = {"poisson_dc": 0.65, "elo_mov": 0.25, "forma_ema": 0.10}  # V123.1 Best: 65/25/10 = 45.95% (204/444) aprendido de /api/model/learn-weights
@@ -486,7 +486,7 @@ class Model:
         rest_penalty_home = rest_home_factor["prob_penalty"]
         rest_penalty_away = rest_away_factor["prob_penalty"]
 
-        # V124 Opcion A - Disciplina: amarillas/rojas/faltas penalizan prob
+        # V124.1 Opcion A - Disciplina: amarillas/rojas/faltas penalizan prob
         # Equipo muy indisciplinado (disc_index >1.2) pierde 3-8% prob, aumenta empate y rival
         disc_penalty_home = 0
         disc_penalty_away = 0
