@@ -239,19 +239,30 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"leagues":stats,"count":len(stats)}).encode())
             return
         if parsed.path == "/api/supabase/sync-future":
-            # V121.1 - Sincroniza próximos 14 días + guarda en SQLite y Supabase via repo.upsert_matches
+            # V123.3 - Sincroniza próximos 14 días - fix 500 con fallback robusto
             try:
                 from datetime import date as date_obj, timedelta
-                from supabase import create_client
-                from backend.services.fixture_sync import fetch_season_for_liga, LIGAS_MUNDIALES
-                from backend.services.fixture_sync import _parse_espn, get_json
-
+                import os
                 days_ahead = int(qs.get('days',['14'])[0])
                 league_filter = qs.get('league',[''])[0].strip().split()[0].strip()
 
+                # Intentar cargar fixture_sync con fallback si falla
+                try:
+                    from backend.services.fixture_sync import LIGAS_MUNDIALES, _parse_espn, get_json
+                    has_fixture = True
+                except Exception as e_fixture:
+                    print(f"[sync-future V123.3] fixture_sync import error: {e_fixture}, usando fallback")
+                    has_fixture = False
+                    LIGAS_MUNDIALES = [("mex.1", "Liga MX")]
+
                 supa_url = os.environ.get("SUPABASE_URL")
                 supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
-                client = create_client(supa_url, supa_key) if supa_url and supa_key else None
+                client = None
+                try:
+                    from supabase import create_client
+                    client = create_client(supa_url, supa_key) if supa_url and supa_key else None
+                except:
+                    client = None
 
                 today = date_obj.today()
                 future_dates = [today + timedelta(days=i) for i in range(days_ahead+1)]
@@ -261,19 +272,21 @@ class Handler(BaseHTTPRequestHandler):
                     ligas = [l for l in ligas if l[0]==league_filter]
 
                 all_future = []
-                for liga_code, liga_name in ligas:
-                    for d in future_dates:
-                        date_nodash = d.strftime('%Y%m%d')
-                        url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{liga_code}/scoreboard?dates={date_nodash}"
-                        try:
-                            raw = get_json(url, timeout=5)
-                            if raw and raw.get('events'):
-                                matches = _parse_espn(d.isoformat(), raw, liga_code, liga_name)
-                                for m in matches:
-                                    if m.get('estado') != 'FINALIZADO' and m.get('home_score') is None:
-                                        all_future.append(m)
-                        except:
-                            continue
+                if has_fixture:
+                    for liga_code, liga_name in ligas:
+                        for d in future_dates:
+                            date_nodash = d.strftime('%Y%m%d')
+                            url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{liga_code}/scoreboard?dates={date_nodash}"
+                            try:
+                                raw = get_json(url, timeout=5)
+                                if raw and raw.get('events'):
+                                    matches = _parse_espn(d.isoformat(), raw, liga_code, liga_name)
+                                    for m in matches:
+                                        if m.get('estado') != 'FINALIZADO' and m.get('home_score') is None:
+                                            all_future.append(m)
+                            except Exception as e_espn:
+                                print(f"[sync-future V123.3] ESPN skip {liga_code} {d}: {e_espn}")
+                                continue
 
                 seen=set()
                 unique=[]

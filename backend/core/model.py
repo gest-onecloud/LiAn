@@ -17,7 +17,7 @@ except:
     HAS_YAML = False
 
 class Model:
-    VERSION = "V123.2.2 RestDays Progresivo + Disciplinary + AutoLearn 2859 + Dixon-Coles - 330+330"
+    VERSION = "V123.3 RestDays Progresivo + Disciplinary + AutoLearn 2859 + Dixon-Coles - 330+330"
 
     def __init__(self, repo=None):
         self.weights = {"poisson_dc": 0.65, "elo_mov": 0.25, "forma_ema": 0.10}  # V123.1 Best: 65/25/10 = 45.95% (204/444) aprendido de /api/model/learn-weights
