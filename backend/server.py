@@ -314,7 +314,6 @@ class Handler(BaseHTTPRequestHandler):
             # V123.3 - Sincroniza próximos 14 días - fix 500 con fallback robusto
             try:
                 from datetime import date as date_obj, timedelta
-                import os
                 days_ahead = int(qs.get('days',['14'])[0])
                 league_raw = (qs.get('league',[''])[0] if qs.get('league') else '')
                 league_filter = league_raw.strip().split()[0].strip() if league_raw.strip() else ''
@@ -786,7 +785,6 @@ class Handler(BaseHTTPRequestHandler):
                         except:
                             return datetime.min
                     from supabase import create_client
-                    import os
                     supa_url = os.environ.get("SUPABASE_URL")
                     supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
                     m_date = parse_d(m.get('date','2026-10-28'))
@@ -934,7 +932,6 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/model/learn-weights":
             # V124.3 - AutoLearn auto-tune disciplina k 0,0.5,1.0,1.6,2.0 para llegar a 210/444
             try:
-                import os
                 from supabase import create_client
                 supa_url = os.environ.get("SUPABASE_URL")
                 supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
