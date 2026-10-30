@@ -17,7 +17,8 @@ except:
     HAS_YAML = False
 
 class Model:
-    VERSION = "V125.4 RestDays Progresivo + Disciplinary + AutoLearn 2859 + Dixon-Coles - 330+330"
+    VERSION = "V125.4 Fix backfill os + 404 top + Historico 5000 + Odds"
+    VERSION_OLD = "V125.4 RestDays Progresivo + Disciplinary + AutoLearn 2859 + Dixon-Coles - 330+330"
 
     def __init__(self, repo=None):
         self.weights = {"poisson_dc": 0.65, "elo_mov": 0.25, "forma_ema": 0.10}  # V124.4.1 BEST 65/25/10 = 46.4% (206/444) k=0.5

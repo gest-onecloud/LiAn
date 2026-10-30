@@ -1,181 +1,24 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LiAn V125.4 - 330 ELO + 330 team_stats - Contadores</title>
-<!-- CSS Modulares Profesionales -->
-<link rel="stylesheet" href="css/variables.css?v=V125.4">
-<link rel="stylesheet" href="css/layout.css?v=V125.4">
-<link rel="stylesheet" href="css/components.css?v=V125.4">
-<link rel="stylesheet" href="css/responsive.css?v=V125.4">
+<title>LiAn V64.6.0 REAL MODE</title>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="layout">
-  <aside class="sidebar">
-    <div class="logo">LiAn <span>V125.4</span><br><small>330 ELO + 330 STATS + CONTADORES</small></div>
-    <nav class="menu">
-      <button class="menu-item" data-filter="search">🔍 Buscar</button>
-      <button class="menu-item active" data-filter="all">⊙ Partidos del día</button>
-      <button class="menu-item" data-filter="top">★ Top Picks</button>
-      <button class="menu-item" data-filter="combinada">∽ Combinadas</button>
-      <button class="menu-item" data-filter="progol">▤ Progol</button>
-      <div class="menu-separator"></div>
-      <div class="menu-group">
-        <button class="menu-group-header" onclick="toggleGroup('america')">
-          <span>🌎 AMÉRICA</span>
-          <span class="arrow" id="arrow-america">▶</span>
-        </button>
-        <div class="menu-group-content" id="group-america">
-          <div class="country-group">
-            <button class="country-header" onclick="toggleCountry('mx')">
-              <span>🇲🇽 México</span>
-              <span class="arrow" id="arrow-mx">▶</span>
-            </button>
-            <div class="country-content" id="country-mx">
-              <button class="menu-item sub" data-filter="league:mex.1">Liga MX</button>
-            </div>
-          </div>
-          <div class="country-group">
-            <button class="country-header" onclick="toggleCountry('usa')">
-              <span>🇺🇸 USA</span>
-              <span class="arrow" id="arrow-usa">▶</span>
-            </button>
-            <div class="country-content" id="country-usa">
-              <button class="menu-item sub" data-filter="league:usa.1">MLS</button>
-              <button class="menu-item sub" data-filter="league:concacaf.champions">Concachampions</button>
-            </div>
-          </div>
-          <div class="country-group">
-            <button class="country-header" onclick="toggleCountry('br')">
-              <span>🇧🇷 Brasil</span>
-              <span class="arrow" id="arrow-br">▶</span>
-            </button>
-            <div class="country-content" id="country-br">
-              <button class="menu-item sub" data-filter="league:bra.1">Brasileirão</button>
-            </div>
-          </div>
-          <div class="country-group">
-            <button class="country-header" onclick="toggleCountry('ar')">
-              <span>🇦🇷 Argentina</span>
-              <span class="arrow" id="arrow-ar">▶</span>
-            </button>
-            <div class="country-content" id="country-ar">
-              <button class="menu-item sub" data-filter="league:arg.1">Liga Argentina</button>
-            </div>
-          </div>
-          <button class="menu-item continent" data-filter="continent:america">Ver todo América</button>
-        </div>
-      </div>
-      <div class="menu-group">
-        <button class="menu-group-header" onclick="toggleGroup('europa')">
-          <span>🌍 EUROPA</span>
-          <span class="arrow" id="arrow-europa">▶</span>
-        </button>
-        <div class="menu-group-content" id="group-europa">
-          <div class="country-group">
-            <button class="country-header" onclick="toggleCountry('eng')">
-              <span>🏴󠁧󠁢󠁥󠁮󠁧󠁿 Inglaterra</span>
-              <span class="arrow" id="arrow-eng">▶</span>
-            </button>
-            <div class="country-content" id="country-eng">
-              <button class="menu-item sub" data-filter="league:eng.1">Premier League</button>
-              <button class="menu-item sub" data-filter="league:eng.fa">FA Cup</button>
-            </div>
-          </div>
-          <div class="country-group">
-            <button class="country-header" onclick="toggleCountry('esp')">
-              <span>🇪🇸 España</span>
-              <span class="arrow" id="arrow-esp">▶</span>
-            </button>
-            <div class="country-content" id="country-esp">
-              <button class="menu-item sub" data-filter="league:esp.1">La Liga</button>
-            </div>
-          </div>
-          <div class="country-group">
-            <button class="country-header" onclick="toggleCountry('ita')">
-              <span>🇮🇹 Italia</span>
-              <span class="arrow" id="arrow-ita">▶</span>
-            </button>
-            <div class="country-content" id="country-ita">
-              <button class="menu-item sub" data-filter="league:ita.1">Serie A</button>
-            </div>
-          </div>
-          <div class="country-group">
-            <button class="country-header" onclick="toggleCountry('ger')">
-              <span>🇩🇪 Alemania</span>
-              <span class="arrow" id="arrow-ger">▶</span>
-            </button>
-            <div class="country-content" id="country-ger">
-              <button class="menu-item sub" data-filter="league:ger.1">Bundesliga</button>
-            </div>
-          </div>
-          <div class="country-group">
-            <button class="country-header" onclick="toggleCountry('fra')">
-              <span>🇫🇷 Francia</span>
-              <span class="arrow" id="arrow-fra">▶</span>
-            </button>
-            <div class="country-content" id="country-fra">
-              <button class="menu-item sub" data-filter="league:fra.1">Ligue 1</button>
-            </div>
-          </div>
-          <div class="country-group">
-            <button class="country-header" onclick="toggleCountry('uefa')">
-              <span>🏆 UEFA</span>
-              <span class="arrow" id="arrow-uefa">▶</span>
-            </button>
-            <div class="country-content" id="country-uefa">
-              <button class="menu-item sub" data-filter="league:uefa.champions">Champions League</button>
-              <button class="menu-item sub" data-filter="league:uefa.europa">Europa League</button>
-              <button class="menu-item sub" data-filter="league:uefa.europa.conf">Conference</button>
-            </div>
-          </div>
-          <button class="menu-item continent" data-filter="continent:europa">Ver todo Europa</button>
-        </div>
-      </div>
-      <div class="menu-separator"></div>
-      <button class="menu-item" data-filter="analytics">📊 Estadísticas</button>
-      <button class="menu-item" data-filter="aciertos">✅ Aciertos</button>
-      <button class="menu-item" data-filter="fallos">❌ Fallos</button>
-    </nav>
-    <div class="sidebar-footer">
-      <div class="search-box" id="searchBox" style="display:none">
-        <input type="text" id="searchInput" placeholder="Buscar equipo...">
-        <input type="date" id="dateInput" value="" style="margin-top:6px;width:100%;background:#0f1a33;border:1px solid #2a3a5a;color:#fff;padding:6px;border-radius:6px">
-        <select id="leagueSelect" style="margin-top:6px">
-          <option value="all">Todas las ligas</option>
-          <option value="Premier League">Premier League</option>
-          <option value="La Liga">La Liga</option>
-          <option value="Liga MX">Liga MX</option>
-          <option value="MLS">MLS</option>
-          <option value="Serie A">Serie A</option>
-          <option value="Bundesliga">Bundesliga</option>
-          <option value="Champions League">Champions</option>
-        </select>
-        <div style="font-size:10px;color:#8aa0c8;margin-top:4px">Calendario solo para búsqueda por fecha</div>
-      </div>
-      <div class="status" id="status">Cargando...</div>
-      <div class="version">V125.4 REAL 330 ELO + 330 STATS<br>Supabase 2863 partidos | ✅ 45.95%<br>Modular CSS + JS + Contadores</div>
-    </div>
-  </aside>
-  <main class="main">
-    <div class="top-bar">
-      <span style="color:#1ee07a;font-weight:900;font-size:14px">🇲🇽 LIGA MX - Temporada Completa México - V125.4 Contadores ✅❌</span>
-      <button id="loadBtn">🔄 Cargar Liga MX</button>
-      <button id="refreshBtn" class="primary">⚡ Sincronizar Liga MX</button>
-      <span class="badge" id="countBadge">0 partidos</span>
-    </div>
-    <div class="grid" id="grid"></div>
-    <div class="log" id="log"></div>
-  </main>
+<div class="header">
+<h1>LiAn V64.6.0 <span class="badge">REAL - ESPN_ALL</span></h1>
+<p id="status">Conectando API...</p>
 </div>
-<!-- JS Modulares Profesionales -->
-<script src="js/config.js?v=V125.4"></script>
-<script src="js/utils.js?v=V125.4"></script>
-<script src="js/state.js?v=V125.4"></script>
-<script src="js/api.js?v=V125.4"></script>
-<script src="js/filters.js?v=V125.4"></script>
-<script src="js/render.js?v=V125.4"></script>
-<script src="js/app.js?v=V125.4"></script>
+<div class="controls">
+<input type="date" id="dateInput">
+<button id="loadBtn">Cargar partidos reales</button>
+<button id="refreshBtn">Sincronizar con ESPN (3s)</button>
+</div>
+<div id="grid" class="grid"></div>
+<div id="log" class="log"></div>
+<script src="app.js"></script>
 </body>
 </html>
