@@ -1,10 +1,13 @@
-// LiAn V124.4.1 - FIX pesos 65/25/10 k=0.5 disciplina 206/444 46.4%
+
+// LiAn V115 - Configuracion centralizada
 const CONFIG = {
   BACKEND: "https://lian-backend.onrender.com",
-  VERSION: "V124.4.1",
-  CACHE_VERSION: "V124.4.1-DISCIPLINA-FIX-PESOS-65-25-10-281",
-  BUILD: "2026-10-29",
-  MODE: "V124.4.1 FIX pesos 65/25/10 206/444"
+  VERSION: "V115",
+  CACHE_VERSION: "V115-2863-FORCE",
+  BUILD: "2026-10-27",
+  MODE: "REAL ELO Supabase 330 equipos - Ligero"
 };
+
+// Exponer global para compatibilidad
 const BACKEND = CONFIG.BACKEND;
 const CACHE_VERSION = CONFIG.CACHE_VERSION;
