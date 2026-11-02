@@ -17,7 +17,7 @@ except:
     HAS_YAML = False
 
 class Model:
-    VERSION = "V126 Backfill Robusto 5000 + Odds Futuro 1 API 40 casas promedio $0"
+    VERSION = "V126.1 Fix 404 definitivo + Backfill Robusto 5000 + Odds $0"
     VERSION_OLD = "V125.4 RestDays Progresivo + Disciplinary + AutoLearn 2859 + Dixon-Coles - 330+330"
 
     def __init__(self, repo=None):
@@ -499,7 +499,7 @@ class Model:
         rest_penalty_home = rest_home_factor["prob_penalty"]
         rest_penalty_away = rest_away_factor["prob_penalty"]
 
-        # V126 Backfill Robusto 5000 + Odds Futuro 1 API 40 casas promedio $0 - Disciplina: amarillas/rojas/faltas penalizan prob
+        # V126.1 Fix 404 definitivo + Backfill Robusto 5000 + Odds $0 - Disciplina: amarillas/rojas/faltas penalizan prob
         # Equipo muy indisciplinado (disc_index >1.2) pierde 3-8% prob, aumenta empate y rival
         disc_penalty_home = 0
         disc_penalty_away = 0
