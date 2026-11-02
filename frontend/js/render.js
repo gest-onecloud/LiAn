@@ -9,6 +9,9 @@ function cardA(m){
   const fecha=(m.date||'').slice(0,10);const hora=(m.time||'').slice(0,5);const liga=(m.league||m.league_code||'Liga').toUpperCase();
   let scoreBox='';if(m.home_score!=null&&m.away_score!=null)scoreBox='<div class="score-box">'+m.home_score+' - '+m.away_score+'</div>';else scoreBox='<div class="score-box score-vs">VS</div>';
   const fav=m.favorite||'';const conf=m.confidence||'';let dot='';if(conf==='Alta')dot='<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#1ee07a;margin-left:4px"></span>';else if(conf==='Media')dot='<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f5d547;margin-left:4px"></span>';else if(conf==='Limitada')dot='<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ff6b6b;margin-left:4px"></span>';
+  // V127.2 FIX: Mostrar ⭐Necaxa (44.9%) con porcentaje del favorito
+  const maxProb = Math.max(p['1']||0, p['X']||0, p['2']||0);
+  const favDisplay = fav ? '⭐'+fav+' ('+maxProb.toFixed(1)+'%)' : '';
   
   // V120 - Botón Mejorar solo para programados
   let mejorarBtn = '';
@@ -28,7 +31,7 @@ function cardA(m){
     if(disc) discInfo = '<div class="disc-info" style="font-size:10px;color:#8aa0c8">🟨 Disciplina: '+disc+'</div>';
   }
 
-  return '<div class="card-compact"><div class="card-top"><span class="card-league">'+esc(liga)+' • '+esc(hora)+' • '+esc(fecha)+'</span>'+badge+'</div><div class="card-teams"><span>'+esc(m.home)+'</span><span class="vs-small"> vs </span><span>'+esc(m.away)+'</span></div>'+scoreBox+'<div class="card-probs"><span>L: '+(p['1']||0).toFixed(1)+'%</span><span>E: '+(p['X']||0).toFixed(1)+'%</span><span>V: '+(p['2']||0).toFixed(1)+'%</span><span class="sum">Σ '+total+'%</span></div><div class="card-bottom"><span class="fav">★ '+esc(fav)+'</span><span class="conf">Conf: '+esc(conf)+dot+'</span>'+mejorarBtn+'</div>'+discInfo+'</div>';
+  return '<div class="card-compact"><div class="card-top"><span class="card-league">'+esc(liga)+' • '+esc(hora)+' • '+esc(fecha)+'</span>'+badge+'</div><div class="card-teams"><span>'+esc(m.home)+'</span><span class="vs-small"> vs </span><span>'+esc(m.away)+'</span></div>'+scoreBox+'<div class="card-probs"><span>L: '+(p['1']||0).toFixed(1)+'%</span><span>E: '+(p['X']||0).toFixed(1)+'%</span><span>V: '+(p['2']||0).toFixed(1)+'%</span><span class="sum">Σ '+total+'%</span></div><div class="card-bottom"><span class="fav">'+esc(favDisplay)+'</span><span class="conf">Conf: '+esc(conf)+dot+'</span>'+mejorarBtn+'</div>'+discInfo+'</div>';
 }
 
 // V120 - Función mejorar partido individual con MonteCarlo
