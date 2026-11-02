@@ -1,4 +1,4 @@
-# V127.2 Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + Fix 404 + VersionHeader | 2026-11-02 08:00 MX | backend/server.py
+# V127.1 Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + Fix 404 + VersionHeader | 2026-11-01 17:08:33 | backend/server.py
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import json
 import os
@@ -154,6 +154,35 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps({"error":str(e)}).encode())
             return
+
+        if parsed.path == "/api/health":
+            try:
+                total = 0
+                try:
+                    total = repo.count_all()
+                except:
+                    total = 0
+                self.send_response(200)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "ok": True,
+                    "records": total,
+                    "total_in_supabase": total,
+                    "version": "V127.2 Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + Fix 404 + VersionHeader",
+                    "mode": "REAL ESPN_ALL + Viaje/Altura 5714",
+                    "status": "ok"
+                }).encode())
+            except Exception as e:
+                import traceback
+                self.send_response(500)
+                self.send_header("Content-Type","application/json")
+                _cors(self)
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e), "trace": traceback.format_exc()[:500]}).encode())
+            return
+
 
         # ================= FIN RUTAS CRITICAS =================
 
@@ -1935,4 +1964,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-# END V127.2 Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + Fix 404 + VersionHeader | 2026-11-02 08:00 MX | backend/server.py
+# END V127.1 Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + Fix 404 + VersionHeader | 2026-11-01 17:08:33 | backend/server.py
