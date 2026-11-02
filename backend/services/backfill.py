@@ -98,17 +98,27 @@ def backfill_all_job(repo_supabase, days_back=730, progress_callback=None):
             date_iso = d.isoformat()
             
             url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{liga_code}/scoreboard?dates={date_nodash}"
-            try:
-                raw = get_json(url, timeout=8)
-                if raw and raw.get('events'):
-                    matches = _parse_espn(date_iso, raw, liga_code, liga_name)
-                    if matches:
-                        all_for_liga.extend(matches)
-            except Exception as e:
-                continue
+            # V126 robusto: retry + sleep mas largo para evitar bloqueo ESPN
+            for attempt in range(3):
+                try:
+                    raw = get_json(url, timeout=10)
+                    if raw and raw.get('events'):
+                        matches = _parse_espn(date_iso, raw, liga_code, liga_name)
+                        if matches:
+                            all_for_liga.extend(matches)
+                    break
+                except Exception as e:
+                    if attempt == 2:
+                        # ultimo intento fallido, continuar
+                        pass
+                    time.sleep(1 + attempt)
+                    continue
             
-            if offset % 30 == 0:
-                time.sleep(0.5)
+            # V126: sleep cada 10 requests para no saturar ESPN
+            if offset % 10 == 0:
+                time.sleep(0.8)
+            if offset % 50 == 0:
+                print(f"[backfill] {liga_code} progreso {offset}/{days_back} dias, {len(all_for_liga)} partidos hasta ahora")
         
         # Deduplicar
         seen = set()
