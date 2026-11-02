@@ -1,3 +1,4 @@
+# V127.1 Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + Fix 404 + VersionHeader | 2026-11-01 17:08:33 | backend/core/model.py
 
 """
 LiAn V119 - Disciplinary Tarjetas Rojas/Amarillas Faltas Arbitro + AutoLearn 2859 + Dixon-Coles + ELO MOV + Forma EMA + HomeAdv por liga + MonteCarlo validador
@@ -17,7 +18,7 @@ except:
     HAS_YAML = False
 
 class Model:
-    VERSION = "V127 Viaje/Altura + 5705 historico + 65/25/10 k=0.5 + Fix 404 + Odds $0"
+    VERSION = "V127.1 Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + Fix 404 + Odds $0"
     VERSION_OLD = "V125.4 RestDays Progresivo + Disciplinary + AutoLearn 2859 + Dixon-Coles - 330+330"
 
     def __init__(self, repo=None):
@@ -877,3 +878,4 @@ class Model:
             "rest_factor_home": rest_home_factor,
             "rest_factor_away": rest_away_factor
         }
+# END V127.1 Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + Fix 404 + VersionHeader | 2026-11-01 17:08:33 | backend/core/model.py
