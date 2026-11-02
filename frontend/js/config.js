@@ -1,10 +1,10 @@
-// LiAn V126.1 - Fix 404 definitivo + Backfill Robusto + Odds
+// LiAn V127 - Viaje/Altura + 5705 historico + Odds Futuro $0
 const CONFIG = {
   BACKEND: "https://lian-backend.onrender.com",
-  VERSION: "V126.1",
-  CACHE_VERSION: "V126.1-FIX-404-DEFINITIVO-OS-ROBUSTO-65-25-10-297",
+  VERSION: "V127",
+  CACHE_VERSION: "V127-VIAJE-ALTURA-5705-65-25-10-298",
   BUILD: "2026-11-02",
-  MODE: "V126.1 Fix 404 definitivo"
+  MODE: "V127 Viaje/Altura + 5705 historico"
 };
 const BACKEND = CONFIG.BACKEND;
 const CACHE_VERSION = CONFIG.CACHE_VERSION;

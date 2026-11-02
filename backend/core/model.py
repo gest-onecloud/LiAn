@@ -17,11 +17,11 @@ except:
     HAS_YAML = False
 
 class Model:
-    VERSION = "V126.1 Fix 404 definitivo + Backfill Robusto 5000 + Odds $0"
+    VERSION = "V127 Viaje/Altura + 5705 historico + 65/25/10 k=0.5 + Fix 404 + Odds $0"
     VERSION_OLD = "V125.4 RestDays Progresivo + Disciplinary + AutoLearn 2859 + Dixon-Coles - 330+330"
 
     def __init__(self, repo=None):
-        self.weights = {"poisson_dc": 0.65, "elo_mov": 0.25, "forma_ema": 0.10}  # V124.4.1 BEST 65/25/10 = 46.4% (206/444) k=0.5
+        self.weights = {"poisson_dc": 0.65, "elo_mov": 0.25, "forma_ema": 0.10}  # V127 BEST 65/25/10 46.4% (206/444) + Viaje/Altura objetivo 210/444 65/25/10 = 46.4% (206/444) k=0.5
         self.discipline_k = 0.5  # V124.3 BEST: k=0.5 = 206/444 (46.4%) +2 aciertos vs 204/444, k=0=205/444, k=1.0=204/444, k=1.6=203/444
         weights_path = Path("config/weights.yaml")
         if weights_path.exists() and HAS_YAML:
@@ -314,7 +314,141 @@ class Model:
         }
 
 
+
+    # V127 - Viaje/Altura: base de datos de ubicaciones y altitudes
+    TEAM_LOCATIONS = {
+        # Liga MX - altitudes reales
+        "TOLUCA": {"lat": 19.287, "lon": -99.654, "alt": 2680, "city": "Toluca"},
+        "PUEBLA": {"lat": 19.043, "lon": -98.197, "alt": 2135, "city": "Puebla"},
+        "PUMAS": {"lat": 19.332, "lon": -99.188, "alt": 2280, "city": "CDMX"},
+        "UNAM": {"lat": 19.332, "lon": -99.188, "alt": 2280, "city": "CDMX"},
+        "AMERICA": {"lat": 19.302, "lon": -99.150, "alt": 2240, "city": "CDMX"},
+        "CRUZ AZUL": {"lat": 19.302, "lon": -99.150, "alt": 2240, "city": "CDMX"},
+        "ATLAS": {"lat": 20.657, "lon": -103.324, "alt": 1570, "city": "Guadalajara"},
+        "GUADALAJARA": {"lat": 20.657, "lon": -103.324, "alt": 1570, "city": "Guadalajara"},
+        "CHIVAS": {"lat": 20.657, "lon": -103.324, "alt": 1570, "city": "Guadalajara"},
+        "MONTERREY": {"lat": 25.678, "lon": -100.285, "alt": 540, "city": "Monterrey"},
+        "TIGRES": {"lat": 25.678, "lon": -100.285, "alt": 540, "city": "Monterrey"},
+        "TIJUANA": {"lat": 32.522, "lon": -117.018, "alt": 20, "city": "Tijuana"},
+        "SANTOS": {"lat": 25.537, "lon": -103.407, "alt": 1120, "city": "Torreon"},
+        "SANTOS LAGUNA": {"lat": 25.537, "lon": -103.407, "alt": 1120, "city": "Torreon"},
+        "LEON": {"lat": 21.122, "lon": -101.673, "alt": 1815, "city": "Leon"},
+        "PACHUCA": {"lat": 20.105, "lon": -98.759, "alt": 2420, "city": "Pachuca"},
+        "QUERETARO": {"lat": 20.588, "lon": -100.389, "alt": 1820, "city": "Queretaro"},
+        "SAN LUIS": {"lat": 22.156, "lon": -100.985, "alt": 1860, "city": "San Luis"},
+        "ATLETICO SAN LUIS": {"lat": 22.156, "lon": -100.985, "alt": 1860, "city": "San Luis"},
+        "NECAXA": {"lat": 21.882, "lon": -102.289, "alt": 1880, "city": "Aguascalientes"},
+        "JUAREZ": {"lat": 31.738, "lon": -106.485, "alt": 1120, "city": "Juarez"},
+        "MAZATLAN": {"lat": 23.218, "lon": -106.422, "alt": 10, "city": "Mazatlan"},
+        "CANCUN": {"lat": 21.161, "lon": -86.851, "alt": 10, "city": "Cancun"},
+        # Premier League
+        "MANCHESTER CITY": {"lat": 53.483, "lon": -2.200, "alt": 50, "city": "Manchester"},
+        "MANCHESTER UNITED": {"lat": 53.463, "lon": -2.291, "alt": 50, "city": "Manchester"},
+        "LIVERPOOL": {"lat": 53.430, "lon": -2.960, "alt": 20, "city": "Liverpool"},
+        "ARSENAL": {"lat": 51.555, "lon": -0.108, "alt": 30, "city": "London"},
+        "CHELSEA": {"lat": 51.481, "lon": -0.191, "alt": 30, "city": "London"},
+        "TOTTENHAM": {"lat": 51.604, "lon": -0.066, "alt": 30, "city": "London"},
+        # La Liga - alturas
+        "REAL MADRID": {"lat": 40.453, "lon": -3.688, "alt": 650, "city": "Madrid"},
+        "BARCELONA": {"lat": 41.380, "lon": 2.122, "alt": 10, "city": "Barcelona"},
+        "ATLETICO MADRID": {"lat": 40.436, "lon": -3.599, "alt": 650, "city": "Madrid"},
+        # Brasil - viajes largos
+        "FLAMENGO": {"lat": -22.912, "lon": -43.231, "alt": 10, "city": "Rio"},
+        "PALMEIRAS": {"lat": -23.545, "lon": -46.673, "alt": 760, "city": "Sao Paulo"},
+        "GREMIO": {"lat": -30.032, "lon": -51.230, "alt": 10, "city": "Porto Alegre"},
+        # Default
+        "DEFAULT": {"lat": 0, "lon": 0, "alt": 0, "city": "Unknown"}
+    }
+
+    def _haversine_distance(self, lat1, lon1, lat2, lon2):
+        """Calcula distancia en km entre dos coordenadas"""
+        import math
+        R = 6371  # Radio tierra km
+        dlat = math.radians(lat2 - lat1)
+        dlon = math.radians(lon2 - lon1)
+        a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
+        c = 2 * math.asin(math.sqrt(a))
+        return R * c
+
+    def _get_team_location(self, team_name):
+        """Obtiene ubicacion del equipo, fallback a DEFAULT"""
+        key = team_name.upper().strip()
+        # Buscar coincidencia parcial
+        for k, v in self.TEAM_LOCATIONS.items():
+            if k in key or key in k:
+                return v
+        # Buscar por palabra clave
+        if "AMERICA" in key:
+            return self.TEAM_LOCATIONS["AMERICA"]
+        if "CHIVAS" in key or "GUADALAJARA" in key:
+            return self.TEAM_LOCATIONS["GUADALAJARA"]
+        return self.TEAM_LOCATIONS["DEFAULT"]
+
+    def _calc_travel_distance(self, home_team, away_team):
+        """Calcula distancia de viaje del visitante al local en km"""
+        try:
+            loc_home = self._get_team_location(home_team)
+            loc_away = self._get_team_location(away_team)
+            if loc_home["lat"] == 0 and loc_home["lon"] == 0:
+                return 0
+            if loc_away["lat"] == 0 and loc_away["lon"] == 0:
+                return 0
+            dist = self._haversine_distance(loc_home["lat"], loc_home["lon"], loc_away["lat"], loc_away["lon"])
+            return round(dist, 0)
+        except:
+            return 0
+
+    def _travel_fatigue_factor(self, distance_km):
+        """V127 - Fatiga por viaje: >2000km penaliza visitante"""
+        if distance_km <= 0:
+            return {"attack": 1.0, "defense": 1.0, "prob_penalty": 0, "label": "0km", "tipo": "sin_viaje"}
+        elif distance_km < 500:
+            return {"attack": 1.0, "defense": 1.0, "prob_penalty": 0, "label": f"{int(distance_km)}km CORTO", "tipo": "viaje_corto"}
+        elif distance_km < 1000:
+            return {"attack": 0.97, "defense": 1.02, "prob_penalty": -1, "label": f"{int(distance_km)}km MEDIO", "tipo": "viaje_medio"}
+        elif distance_km < 2000:
+            return {"attack": 0.94, "defense": 1.05, "prob_penalty": -2.5, "label": f"{int(distance_km)}km LARGO", "tipo": "viaje_largo"}
+        elif distance_km < 3000:
+            return {"attack": 0.90, "defense": 1.08, "prob_penalty": -4, "label": f"{int(distance_km)}km MUY LARGO", "tipo": "viaje_muy_largo"}
+        else:
+            return {"attack": 0.86, "defense": 1.12, "prob_penalty": -6, "label": f"{int(distance_km)}km EXTREMO", "tipo": "viaje_extremo"}
+
+    def _altitude_factor(self, home_team, away_team):
+        """V127 - Altura: local en altura >2000m penaliza visitante de baja altura"""
+        try:
+            loc_home = self._get_team_location(home_team)
+            loc_away = self._get_team_location(away_team)
+            alt_home = loc_home.get("alt", 0)
+            alt_away = loc_away.get("alt", 0)
+            alt_diff = alt_home - alt_away
+            
+            # Solo penaliza si local esta alto y visitante viene de bajo
+            if alt_home < 1500:
+                return {"attack": 1.0, "defense": 1.0, "prob_penalty": 0, "label": f"{alt_home}m BAJO", "tipo": "altura_baja", "alt_diff": alt_diff}
+            elif alt_home < 2000:
+                if alt_diff > 1000:
+                    return {"attack": 1.0, "defense": 1.0, "prob_penalty": -1, "label": f"{alt_home}m MEDIA vs {alt_away}m diff {int(alt_diff)}m", "tipo": "altura_media", "alt_diff": alt_diff}
+                else:
+                    return {"attack": 1.0, "defense": 1.0, "prob_penalty": 0, "label": f"{alt_home}m MEDIA", "tipo": "altura_media", "alt_diff": alt_diff}
+            elif alt_home < 2500:
+                if alt_diff > 1500:
+                    return {"attack": 1.0, "defense": 1.0, "prob_penalty": -3, "label": f"{alt_home}m ALTA vs {alt_away}m diff {int(alt_diff)}m", "tipo": "altura_alta", "alt_diff": alt_diff}
+                elif alt_diff > 800:
+                    return {"attack": 1.0, "defense": 1.0, "prob_penalty": -2, "label": f"{alt_home}m ALTA vs {alt_away}m diff {int(alt_diff)}m", "tipo": "altura_alta", "alt_diff": alt_diff}
+                else:
+                    return {"attack": 1.0, "defense": 1.0, "prob_penalty": -1, "label": f"{alt_home}m ALTA", "tipo": "altura_alta", "alt_diff": alt_diff}
+            else:  # >2500m Toluca
+                if alt_diff > 2000:
+                    return {"attack": 1.0, "defense": 1.0, "prob_penalty": -5, "label": f"{alt_home}m MUY ALTA vs {alt_away}m diff {int(alt_diff)}m", "tipo": "altura_muy_alta", "alt_diff": alt_diff}
+                elif alt_diff > 1000:
+                    return {"attack": 1.0, "defense": 1.0, "prob_penalty": -3.5, "label": f"{alt_home}m MUY ALTA vs {alt_away}m diff {int(alt_diff)}m", "tipo": "altura_muy_alta", "alt_diff": alt_diff}
+                else:
+                    return {"attack": 1.0, "defense": 1.0, "prob_penalty": -2, "label": f"{alt_home}m MUY ALTA", "tipo": "altura_muy_alta", "alt_diff": alt_diff}
+        except:
+            return {"attack": 1.0, "defense": 1.0, "prob_penalty": 0, "label": "0m", "tipo": "altura_unknown", "alt_diff": 0}
+
     def _calc_rest_days(self, match_date_str, team_last_match_date_str):
+
         """Calcula dias de descanso entre partidos"""
         try:
             from datetime import datetime
@@ -457,6 +591,11 @@ class Model:
         rest_home_factor = self._rest_fatigue_factor(home_rest)
         rest_away_factor = self._rest_fatigue_factor(away_rest)
 
+        # V127 - Viaje y Altura
+        travel_distance = self._calc_travel_distance(home, away)
+        travel_factor = self._travel_fatigue_factor(travel_distance)
+        altitude_factor = self._altitude_factor(home, away)
+
         if home in self.team_stats and self.team_stats[home].get("mp",0) > 0:
             s_home = self.team_stats[home]
             s_away = self.team_stats.get(away, {"mp":0, "avg_for":1.2, "avg_against":1.2})
@@ -522,10 +661,14 @@ class Model:
         except Exception as e_disc:
             print(f"[V124 discipline] error {e_disc}")
 
+        # V127 - Penalidades viaje y altura para visitante
+        travel_penalty = travel_factor["prob_penalty"]  # negativo, penaliza visitante = beneficia local
+        altitude_penalty = altitude_factor["prob_penalty"]  # negativo, penaliza visitante en altura
+
         prob_elo_mov = {
-            "1": max(5, min(85, prob_poisson_dc["1"] + elo_adj + rest_penalty_home - disc_penalty_home)),
-            "X": prob_poisson_dc["X"] - (rest_penalty_home + rest_penalty_away)/2 * -0.3 + (disc_penalty_home + disc_penalty_away)*0.2,  # indisciplina aumenta empate por precaucion
-            "2": max(5, min(85, prob_poisson_dc["2"] - elo_adj + rest_penalty_away - disc_penalty_away)),
+            "1": max(5, min(85, prob_poisson_dc["1"] + elo_adj + rest_penalty_home - disc_penalty_home - travel_penalty - altitude_penalty)),
+            "X": prob_poisson_dc["X"] - (rest_penalty_home + rest_penalty_away)/2 * -0.3 + (disc_penalty_home + disc_penalty_away)*0.2 + (travel_penalty + altitude_penalty)*0.1,
+            "2": max(5, min(85, prob_poisson_dc["2"] - elo_adj + rest_penalty_away - disc_penalty_away + travel_penalty + altitude_penalty)),
         }
         s = prob_elo_mov["1"]+prob_elo_mov["X"]+prob_elo_mov["2"]
         prob_elo_mov = {k: round(v/s*100,1) for k,v in prob_elo_mov.items()}
@@ -668,6 +811,7 @@ class Model:
                 f"Ataque {home}={att_home:.2f} Def={def_home:.2f} Disc={s_home.get('discipline_index',1.0):.2f} Poss={s_home.get('avg_possession',50):.0f}% | {away} Att={att_away:.2f} Def={def_away:.2f} Disc={s_away.get('discipline_index',1.0):.2f} Poss={s_away.get('avg_possession',50):.0f}% HomeAdv={home_adv} src={self.team_stats_source}",
                 f"Forma EMA {home}={form_home:.3f} {away}={form_away:.3f}",
                 f"Descanso {home}={home_rest}d {rest_home_factor['label']} att={rest_home_factor['attack']:.2f} | {away}={away_rest}d {rest_away_factor['label']} att={rest_away_factor['attack']:.2f}",
+                f"Viaje {travel_factor['label']} penal {travel_factor['prob_penalty']}% | Altura {altitude_factor['label']} penal {altitude_factor['prob_penalty']}%",
                 f"MC validador 6000: 1={prob_mc_interval['1']}% X={prob_mc_interval['X']}% 2={prob_mc_interval['2']}%"
             ]
         else:
@@ -694,7 +838,10 @@ class Model:
                 "forma_ema": prob_forma_ema,
                 "montecarlo_validador": prob_mc_interval,
                 "weights": w,
-                "home_adv": home_adv
+                "home_adv": home_adv,
+                "viaje_km": travel_distance,
+                "viaje_factor": travel_factor,
+                "altura_factor": altitude_factor
             },
             "favorite": fav,
             "confidence": confianza,
