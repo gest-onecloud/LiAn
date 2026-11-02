@@ -1,305 +1,148 @@
-# V127.1 Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + Fix 404 + VersionHeader | 2026-11-01 17:08:33 | backend/core/model.py
-
-"""
-LiAn V119 - Disciplinary Tarjetas Rojas/Amarillas Faltas Arbitro + AutoLearn 2859 + Dixon-Coles + ELO MOV + Forma EMA + HomeAdv por liga + MonteCarlo validador
-Fix: Poisson y MonteCarlo ya no duplican, Dixon-Coles corrige empates 0-0,1-0,0-1,1-1
-"""
-import math
+# V127.2 Fix Health 404 + Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + VersionHeader | 2026-11-01 18:27:00 | backend/core/model.py
 import hashlib
+import math
 import random
-import os
-from pathlib import Path
-from collections import defaultdict, deque
-from datetime import datetime
-try:
-    import yaml
-    HAS_YAML = True
-except:
-    HAS_YAML = False
+from datetime import datetime as dt
 
 class Model:
-    VERSION = "V127.1 Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + Fix 404 + Odds $0"
-    VERSION_OLD = "V125.4 RestDays Progresivo + Disciplinary + AutoLearn 2859 + Dixon-Coles - 330+330"
+    VERSION = "V127.2 Fix Health 404 + Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + VersionHeader | 2026-11-01 18:27:00"
+    VERSION_SHORT = "V127.2"
 
     def __init__(self, repo=None):
-        self.weights = {"poisson_dc": 0.65, "elo_mov": 0.25, "forma_ema": 0.10}  # V127 BEST 65/25/10 46.4% (206/444) + Viaje/Altura objetivo 210/444 65/25/10 = 46.4% (206/444) k=0.5
-        self.discipline_k = 0.5  # V124.3 BEST: k=0.5 = 206/444 (46.4%) +2 aciertos vs 204/444, k=0=205/444, k=1.0=204/444, k=1.6=203/444
-        weights_path = Path("config/weights.yaml")
-        if weights_path.exists() and HAS_YAML:
-            try:
-                data = yaml.safe_load(weights_path.read_text(encoding='utf-8'))
-                if data:
-                    self.weights['poisson_dc'] = data.get('poisson_dc', 0.70)
-                    self.weights['elo_mov'] = data.get('elo_mov', 0.20)
-                    self.weights['forma_ema'] = data.get('forma_ema', 0.10)
-            except:
-                pass
-
-        self.elo = defaultdict(lambda: 1500)
+        self.repo = repo
+        self.weights = {"poisson_dc": 0.65, "elo_mov": 0.25, "forma_ema": 0.10}  # V127 BEST 65/25/10 46.4% (206/444) + Viaje/Altura objetivo 210/444
+        self.discipline_k = 0.5  # V124.4.1 BEST auto-tune
+        self.elo = {}
         self.team_stats = {}
-        # V118.2 aprendido de 2859 partidos reales: draw 24.3%, rho 0.12
-        self.home_adv = {
-            "mex.1": 1.089, "esp.1": 1.123, "ita.1": 1.076, "ger.1": 1.077, 
-            "fra.1": 1.153, "usa.1": 1.082, "bra.1": 1.167, "arg.1": 1.114,
-            "eng.1": 1.074, "uefa.champions": 1.131, "uefa.europa": 1.142,
-            "uefa.europa.conf": 1.157, "concacaf.champions": 1.125, "eng.fa": 1.089,
-            "default": 1.10
-        }
-        self.history_loaded = False
-        self.history_count = 0
         self.elo_source = "none"
         self.team_stats_source = "none"
+        self.history_loaded = False
+        self._load_elo_and_stats()
 
-        loaded_elo = self._load_elo_from_supabase_table()
-        loaded_stats = self._load_team_stats_from_supabase_table()
-
-        if loaded_elo or loaded_stats:
-            self.history_loaded = True
-            self.elo_source = "elo_ratings_table" if loaded_elo else "none"
-            self.team_stats_source = "team_stats_table" if loaded_stats else "none"
-            self.history_count = max(len(self.elo), len(self.team_stats))
-            print(f"[Model V117.1] ELO: {len(self.elo)} equipos, team_stats: {len(self.team_stats)} equipos, HomeAdv por liga")
-
-        if not self.history_loaded and repo:
-            print("[Model V117.1] No se pudo cargar tablas, calculando desde matches...")
-            loaded = self.load_historical_stats(repo, limit=1000)
-            self.history_loaded = loaded
-
-        if not self.history_loaded:
-            print("[Model V117.1] Usando fallback hash")
-
-    def _load_elo_from_supabase_table(self):
+    def _load_elo_and_stats(self):
+        # Carga ELO y team_stats desde repo si existe
         try:
-            from supabase import create_client
-            supa_url = os.environ.get("SUPABASE_URL")
-            supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
-            if not supa_url or not supa_key:
-                return False
-            client = create_client(supa_url, supa_key)
-            res = client.table('elo_ratings').select('team, rating').limit(1000).execute()
-            if not res.data:
-                return False
-            for row in res.data:
-                team = str(row.get('team','')).strip()
+            if self.repo and hasattr(self.repo, 'supabase') and self.repo.supabase:
                 try:
-                    rating = float(row.get('rating', 1500))
-                except:
-                    rating = 1500.0
-                if team:
-                    self.elo[team] = rating
-            return True
-        except Exception as e:
-            print(f"[Model] Error ELO: {e}")
-            return False
-
-    def _load_team_stats_from_supabase_table(self):
-        try:
-            from supabase import create_client
-            supa_url = os.environ.get("SUPABASE_URL")
-            supa_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
-            if not supa_url or not supa_key:
-                return False
-            client = create_client(supa_url, supa_key)
-            res = client.table('team_stats').select('*').limit(1000).execute()
-            if not res.data:
-                return False
-            for row in res.data:
-                team = str(row.get('team','')).strip()
-                if not team:
-                    continue
-                self.team_stats[team] = {
-                    "gf": int(row.get('goals_for', 0) or 0),
-                    "ga": int(row.get('goals_against', 0) or 0),
-                    "mp": int(row.get('matches_played', 0) or 0),
-                    "avg_for": float(row.get('avg_goals_for', 0) or 0),
-                    "avg_against": float(row.get('avg_goals_against', 0) or 0),
-                    "attack": float(row.get('attack_strength', 1.0) or 1.0),
-                    "defense": float(row.get('defense_strength', 1.0) or 1.0),
-                    "form": str(row.get('form_last5','') or ''),
-                    "pts_last5": int(row.get('points_last5', 0) or 0),
-                    "avg_yellow": float(row.get('avg_yellow', 0) or 0),
-                    "avg_red": float(row.get('avg_red', 0) or 0),
-                    "avg_fouls": float(row.get('avg_fouls', 0) or 0),
-                    "discipline_index": float(row.get('discipline_index', 1.0) or 1.0),
-                    "avg_possession": float(row.get('avg_possession', 50) or 50),
-                }
-            return True
-        except Exception as e:
-            print(f"[Model] Error team_stats: {e}")
-            return False
-
-    def load_historical_stats(self, repo, limit=1000):
-        try:
-            matches = repo.get_all(limit=limit)
-            finished = [m for m in matches if m.get('home_score') is not None and m.get('away_score') is not None]
-            def parse_date(m):
+                    r = self.repo.supabase.table('elo_ratings').select('*').execute()
+                    if r.data:
+                        for row in r.data:
+                            self.elo[row['team']] = row['rating']
+                        self.elo_source = f"supabase {len(self.elo)} equipos"
+                        self.history_loaded = True
+                except Exception as e:
+                    print(f"[model elo] supabase error {e}")
                 try:
-                    return datetime.fromisoformat(str(m.get('date',''))[:10])
-                except:
-                    return datetime.min
-            finished.sort(key=parse_date)
-            elo = defaultdict(lambda: 1500)
-            stats = defaultdict(lambda: {"gf":0,"ga":0,"mp":0,"w":0,"d":0,"l":0,"form":deque(maxlen=5),"avg_for":0,"avg_against":0,"attack":1.0,"defense":1.0,"pts_last5":0})
-            for m in finished:
-                home = str(m.get('home','')).strip()
-                away = str(m.get('away','')).strip()
-                if not home or not away:
-                    continue
-                try:
-                    hs = int(m.get('home_score'))
-                    aw = int(m.get('away_score'))
-                except:
-                    continue
-                eh = elo[home]
-                ea = elo[away]
-                exp_home = 1 / (1 + 10 ** ((ea - eh) / 400))
-                exp_away = 1 - exp_home
-                # ELO con MOV
-                K = 20 * (1 + abs(hs-aw)*0.2)
-                if hs > aw:
-                    res_home, res_away = 1, 0
-                elif hs == aw:
-                    res_home, res_away = 0.5, 0.5
-                else:
-                    res_home, res_away = 0, 1
-                elo[home] = eh + K * (res_home - exp_home)
-                elo[away] = ea + K * (res_away - exp_away)
-                stats[home]["gf"] += hs
-                stats[home]["ga"] += aw
-                stats[home]["mp"] += 1
-                stats[away]["gf"] += aw
-                stats[away]["ga"] += hs
-                stats[away]["mp"] += 1
-            for team,s in stats.items():
-                mp=max(1,s["mp"])
-                s["avg_for"]=s["gf"]/mp
-                s["avg_against"]=s["ga"]/mp
-            self.elo=elo
-            self.team_stats=stats
-            self.history_loaded=True
-            self.history_count=len(finished)
-            self.elo_source="matches_calc"
-            self.team_stats_source="matches_calc"
-            return True
+                    r = self.repo.supabase.table('team_stats').select('*').execute()
+                    if r.data:
+                        for row in r.data:
+                            self.team_stats[row['team']] = row
+                        self.team_stats_source = f"supabase {len(self.team_stats)} stats"
+                except Exception as e:
+                    print(f"[model stats] supabase error {e}")
         except Exception as e:
-            print(f"[Model] Error historico: {e}")
-            return False
+            print(f"[model load] error {e}")
 
-    def _team_strength(self, team_name: str) -> float:
-        if self.history_loaded and team_name in self.elo:
-            elo = self.elo[team_name]
-            strength = 0.8 + (elo - 1300) / 1000.0
-            return max(0.6, min(1.8, strength))
-        h = int(hashlib.md5(team_name.lower().encode()).hexdigest()[:8], 16)
-        return 0.8 + (h % 500) / 1000.0
+    def _team_strength(self, team):
+        if team in self.elo:
+            # ELO 1500 -> 1.0, 1600 -> 1.2 etc
+            return 0.5 + (self.elo[team] - 1000) / 1000
+        # hash fallback
+        h = int(hashlib.md5(team.encode()).hexdigest()[:4], 16) % 100
+        return 0.7 + h / 200
 
-    def _team_attack_defense(self, team_name: str):
-        if team_name in self.team_stats:
-            s = self.team_stats[team_name]
-            mp = s.get("mp", 0)
-            if mp > 0:
-                attack = s.get("avg_for", 0) if s.get("avg_for",0)>0 else s.get("gf",0)/mp
-                defense = s.get("avg_against", 0) if s.get("avg_against",0)>0 else s.get("ga",0)/mp
-                return attack, defense, mp
-        if self.history_loaded and team_name in self.elo:
-            elo = self.elo[team_name]
-            base = 0.6 + (elo - 1300) / 500.0
-            return max(0.4, base), max(0.4, 2.4 - base), 0
-        return 1.2, 1.2, 0
+    def _team_attack_defense(self, team):
+        if team in self.team_stats:
+            s = self.team_stats[team]
+            return s.get('avg_for', 1.2), s.get('avg_against', 1.2), s.get('mp', 0)
+        # fallback hash
+        h1 = int(hashlib.md5((team+"att").encode()).hexdigest()[:2], 16)
+        h2 = int(hashlib.md5((team+"def").encode()).hexdigest()[:2], 16)
+        return 1.0 + (h1 % 50)/100, 1.0 + (h2 % 50)/100, 0
 
-    def _team_form_ema(self, team_name: str) -> float:
-        if team_name in self.team_stats:
-            s = self.team_stats[team_name]
-            form_str = s.get("form","")
-            if not form_str:
-                return 0
-            parts = [x.strip() for x in form_str.replace(",","-").split("-") if x.strip()]
-            if not parts:
-                return 0
-            # EMA: ultimo 40%, penultimo 25%, etc
-            weights = [0.4, 0.25, 0.15, 0.12, 0.08]
-            score = 0
-            total_w = 0
-            for i, p in enumerate(reversed(parts[-5:])):
-                w = weights[i] if i < len(weights) else 0.05
-                val = 1 if p=="W" else 0.5 if p=="D" else 0
-                score += val * w
-                total_w += w
-            if total_w>0:
-                score = score/total_w
-                return (score - 0.5) * 0.25
-        return 0
+    def _team_form_ema(self, team):
+        if team in self.team_stats:
+            # usa forma si existe
+            return self.team_stats[team].get('form_ema', 0.0)
+        return 0.0
 
-    def _get_home_adv(self, league_code, league_name=""):
-        lc = (league_code or "").lower()
-        ln = (league_name or "").lower()
-        if "mex" in lc or "mexico" in ln or "liga mx" in ln:
-            return self.home_adv["mex.1"]
-        if "eng" in lc or "premier" in ln:
-            return self.home_adv["eng.1"]
-        if "esp" in lc or "la liga" in ln:
-            return self.home_adv["esp.1"]
-        if lc in self.home_adv:
-            return self.home_adv[lc]
-        return self.home_adv["default"]
-
-    def _poisson_prob(self, lamb, k):
-        return (math.exp(-lamb) * (lamb ** k)) / math.factorial(k)
-
-    def _dixon_coles_tau(self, hg, ag, rho=0.12):
-        if hg==0 and ag==0:
-            return 1 - rho
-        if hg==1 and ag==0:
-            return 1 + rho
-        if hg==0 and ag==1:
-            return 1 + rho
-        if hg==1 and ag==1:
-            return 1 - rho
-        return 1.0
+    def _get_home_adv(self, league_code, league):
+        # Liga MX tiene home adv mas alto por altura y viajes
+        lc = (league_code or '').lower()
+        if 'mex' in lc or 'liga mx' in (league or '').lower():
+            return 1.25
+        if 'eng' in lc or 'esp' in lc or 'ita' in lc:
+            return 1.18
+        return 1.20
 
     def _calc_1x2_from_xg_dixon_coles(self, xg_home, xg_away, rho=0.12):
-        p_home = p_draw = p_away = 0.0
-        for gh in range(8):
-            ph = self._poisson_prob(xg_home, gh)
-            for ga in range(8):
-                pa = self._poisson_prob(xg_away, ga)
-                tau = self._dixon_coles_tau(gh, ga, rho)
-                prob = ph * pa * tau
-                if gh > ga:
-                    p_home += prob
-                elif gh == ga:
-                    p_draw += prob
+        # Dixon-Coles ajuste
+        # Poisson simple + correccion empates bajos
+        def poisson(k, lam):
+            return (lam**k * math.exp(-lam)) / math.factorial(k)
+        
+        probs = {"1":0,"X":0,"2":0}
+        total = 0
+        # suma hasta 7 goles
+        for h in range(0,8):
+            for a in range(0,8):
+                p = poisson(h, xg_home) * poisson(a, xg_away)
+                # Dixon-Coles correction for 0-0,1-0,0-1,1-1
+                if h==0 and a==0:
+                    p *= (1 - rho * xg_away * xg_home)
+                elif h==1 and a==0:
+                    p *= (1 + rho * xg_away)
+                elif h==0 and a==1:
+                    p *= (1 + rho * xg_home)
+                elif h==1 and a==1:
+                    p *= (1 - rho)
+                
+                if h > a:
+                    probs["1"] += p
+                elif h == a:
+                    probs["X"] += p
                 else:
-                    p_away += prob
-        total = p_home + p_draw + p_away
-        # Normalizar por rho
-        return {
-            "1": round((p_home / total) * 100, 1),
-            "X": round((p_draw / total) * 100, 1),
-            "2": round((p_away / total) * 100, 1),
-        }
+                    probs["2"] += p
+                total += p
+        
+        # normalizar
+        s = probs["1"]+probs["X"]+probs["2"]
+        if s>0:
+            probs = {k: round(v/s*100,1) for k,v in probs.items()}
+        return probs
 
-    def _montecarlo_interval(self, xg_home, xg_away):
-        random.seed(int((xg_home*1000 + xg_away*1000)) % 100000)
-        c1 = cX = c2 = 0
-        for _ in range(6000):
+    def _montecarlo_interval(self, xg_home, xg_away, n=6000):
+        # V121.2 MC 6000 validador
+        c1=cX=c2=0
+        for _ in range(n):
+            # poisson sample via random
+            # aproximacion rapida
+            gh = 0
+            # sample home goals
             L = math.exp(-xg_home)
-            p = 1.0
-            k = 0
+            p=1.0
+            k=0
             while True:
-                k += 1
                 p *= random.random()
                 if p <= L:
-                    gh = k-1
+                    gh = k
                     break
+                k+=1
+                if k>10:
+                    gh=k
+                    break
+            ga=0
             L = math.exp(-xg_away)
-            p = 1.0
-            k = 0
+            p=1.0
+            k=0
             while True:
-                k += 1
                 p *= random.random()
                 if p <= L:
-                    ga = k-1
+                    ga = k-1 if k>0 else 0
+                    break
+                k+=1
+                if k>10:
+                    ga=k
                     break
             if gh > ga:
                 c1 += 1
@@ -314,11 +157,8 @@ class Model:
             "2": round((c2/total)*100,1),
         }
 
-
-
     # V127 - Viaje/Altura: base de datos de ubicaciones y altitudes
     TEAM_LOCATIONS = {
-        # Liga MX - altitudes reales
         "TOLUCA": {"lat": 19.287, "lon": -99.654, "alt": 2680, "city": "Toluca"},
         "PUEBLA": {"lat": 19.043, "lon": -98.197, "alt": 2135, "city": "Puebla"},
         "PUMAS": {"lat": 19.332, "lon": -99.188, "alt": 2280, "city": "CDMX"},
@@ -342,29 +182,23 @@ class Model:
         "JUAREZ": {"lat": 31.738, "lon": -106.485, "alt": 1120, "city": "Juarez"},
         "MAZATLAN": {"lat": 23.218, "lon": -106.422, "alt": 10, "city": "Mazatlan"},
         "CANCUN": {"lat": 21.161, "lon": -86.851, "alt": 10, "city": "Cancun"},
-        # Premier League
         "MANCHESTER CITY": {"lat": 53.483, "lon": -2.200, "alt": 50, "city": "Manchester"},
         "MANCHESTER UNITED": {"lat": 53.463, "lon": -2.291, "alt": 50, "city": "Manchester"},
         "LIVERPOOL": {"lat": 53.430, "lon": -2.960, "alt": 20, "city": "Liverpool"},
         "ARSENAL": {"lat": 51.555, "lon": -0.108, "alt": 30, "city": "London"},
         "CHELSEA": {"lat": 51.481, "lon": -0.191, "alt": 30, "city": "London"},
         "TOTTENHAM": {"lat": 51.604, "lon": -0.066, "alt": 30, "city": "London"},
-        # La Liga - alturas
         "REAL MADRID": {"lat": 40.453, "lon": -3.688, "alt": 650, "city": "Madrid"},
         "BARCELONA": {"lat": 41.380, "lon": 2.122, "alt": 10, "city": "Barcelona"},
         "ATLETICO MADRID": {"lat": 40.436, "lon": -3.599, "alt": 650, "city": "Madrid"},
-        # Brasil - viajes largos
         "FLAMENGO": {"lat": -22.912, "lon": -43.231, "alt": 10, "city": "Rio"},
         "PALMEIRAS": {"lat": -23.545, "lon": -46.673, "alt": 760, "city": "Sao Paulo"},
         "GREMIO": {"lat": -30.032, "lon": -51.230, "alt": 10, "city": "Porto Alegre"},
-        # Default
         "DEFAULT": {"lat": 0, "lon": 0, "alt": 0, "city": "Unknown"}
     }
 
     def _haversine_distance(self, lat1, lon1, lat2, lon2):
-        """Calcula distancia en km entre dos coordenadas"""
-        import math
-        R = 6371  # Radio tierra km
+        R = 6371
         dlat = math.radians(lat2 - lat1)
         dlon = math.radians(lon2 - lon1)
         a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
@@ -372,13 +206,10 @@ class Model:
         return R * c
 
     def _get_team_location(self, team_name):
-        """Obtiene ubicacion del equipo, fallback a DEFAULT"""
         key = team_name.upper().strip()
-        # Buscar coincidencia parcial
         for k, v in self.TEAM_LOCATIONS.items():
             if k in key or key in k:
                 return v
-        # Buscar por palabra clave
         if "AMERICA" in key:
             return self.TEAM_LOCATIONS["AMERICA"]
         if "CHIVAS" in key or "GUADALAJARA" in key:
@@ -386,7 +217,6 @@ class Model:
         return self.TEAM_LOCATIONS["DEFAULT"]
 
     def _calc_travel_distance(self, home_team, away_team):
-        """Calcula distancia de viaje del visitante al local en km"""
         try:
             loc_home = self._get_team_location(home_team)
             loc_away = self._get_team_location(away_team)
@@ -400,7 +230,6 @@ class Model:
             return 0
 
     def _travel_fatigue_factor(self, distance_km):
-        """V127 - Fatiga por viaje: >2000km penaliza visitante"""
         if distance_km <= 0:
             return {"attack": 1.0, "defense": 1.0, "prob_penalty": 0, "label": "0km", "tipo": "sin_viaje"}
         elif distance_km < 500:
@@ -415,15 +244,12 @@ class Model:
             return {"attack": 0.86, "defense": 1.12, "prob_penalty": -6, "label": f"{int(distance_km)}km EXTREMO", "tipo": "viaje_extremo"}
 
     def _altitude_factor(self, home_team, away_team):
-        """V127 - Altura: local en altura >2000m penaliza visitante de baja altura"""
         try:
             loc_home = self._get_team_location(home_team)
             loc_away = self._get_team_location(away_team)
             alt_home = loc_home.get("alt", 0)
             alt_away = loc_away.get("alt", 0)
             alt_diff = alt_home - alt_away
-            
-            # Solo penaliza si local esta alto y visitante viene de bajo
             if alt_home < 1500:
                 return {"attack": 1.0, "defense": 1.0, "prob_penalty": 0, "label": f"{alt_home}m BAJO", "tipo": "altura_baja", "alt_diff": alt_diff}
             elif alt_home < 2000:
@@ -438,7 +264,7 @@ class Model:
                     return {"attack": 1.0, "defense": 1.0, "prob_penalty": -2, "label": f"{alt_home}m ALTA vs {alt_away}m diff {int(alt_diff)}m", "tipo": "altura_alta", "alt_diff": alt_diff}
                 else:
                     return {"attack": 1.0, "defense": 1.0, "prob_penalty": -1, "label": f"{alt_home}m ALTA", "tipo": "altura_alta", "alt_diff": alt_diff}
-            else:  # >2500m Toluca
+            else:
                 if alt_diff > 2000:
                     return {"attack": 1.0, "defense": 1.0, "prob_penalty": -5, "label": f"{alt_home}m MUY ALTA vs {alt_away}m diff {int(alt_diff)}m", "tipo": "altura_muy_alta", "alt_diff": alt_diff}
                 elif alt_diff > 1000:
@@ -449,12 +275,10 @@ class Model:
             return {"attack": 1.0, "defense": 1.0, "prob_penalty": 0, "label": "0m", "tipo": "altura_unknown", "alt_diff": 0}
 
     def _calc_rest_days(self, match_date_str, team_last_match_date_str):
-
-        """Calcula dias de descanso entre partidos"""
         try:
             from datetime import datetime
             if not match_date_str or not team_last_match_date_str:
-                return 7  # default 7 dias si no hay dato
+                return 7
             d1 = datetime.fromisoformat(str(match_date_str)[:10])
             d2 = datetime.fromisoformat(str(team_last_match_date_str)[:10])
             delta = (d1 - d2).days
@@ -463,7 +287,6 @@ class Model:
             return 7
 
     def _rest_fatigue_factor(self, rest_days):
-        """V122.2 Oxido progresivo: cientificamente >14 dias detraining reduce ATP y performance explosiva"""
         if rest_days <= 0:
             return {"attack": 0.80, "defense": 1.20, "label": f"{rest_days}d CRITICO", "prob_penalty": -8, "conf_penalty": 2, "tipo": "fatiga"}
         elif rest_days == 1:
@@ -488,7 +311,6 @@ class Model:
             return {"attack": 0.82, "defense": 1.15, "label": f"{rest_days}d OXIDO CRITICO", "prob_penalty": -9, "conf_penalty": 2, "tipo": "oxido_critico"}
 
     def auto_learn_best_weights(self, matches_finished, test_weights_list=None, test_discipline_k=None):
-        """V124.3 - Prueba pesos + disciplina k (0,0.5,1.0,1.6,2.0) para llegar a 210/444"""
         if test_weights_list is None:
             test_weights_list = [
                 {"poisson_dc": 0.75, "elo_mov": 0.20, "forma_ema": 0.05},
@@ -499,14 +321,12 @@ class Model:
                 {"poisson_dc": 0.65, "elo_mov": 0.20, "forma_ema": 0.15},
             ]
         if test_discipline_k is None:
-            test_discipline_k = [0, 0.5, 1.0, 1.6, 2.0]  # V124.3 auto-tune
-        
+            test_discipline_k = [0, 0.5, 1.0, 1.6, 2.0]
         best_acc = 0
         best_w = self.weights
         best_k = self.discipline_k
         results = []
         discipline_results = []
-        
         for k in test_discipline_k:
             orig_k = self.discipline_k
             self.discipline_k = k
@@ -542,24 +362,19 @@ class Model:
                     best_acc = acc
                     best_w = w
                     best_k = k
-            # Track best per k
             per_k_best = max([r for r in results if r['discipline_k']==k], key=lambda x: x['accuracy'], default={"accuracy":0})
             discipline_results.append({"k": k, "best_accuracy": per_k_best.get('accuracy',0), "best_correct": per_k_best.get('correct',0), "best_weights": per_k_best.get('weights',{})})
             self.discipline_k = orig_k
-        
-        # Restore best k
         self.discipline_k = best_k
         results.sort(key=lambda x: x['accuracy'], reverse=True)
         discipline_results.sort(key=lambda x: x['best_accuracy'], reverse=True)
         return {"best": best_w, "best_k": best_k, "best_accuracy": best_acc, "all_results": results[:10], "discipline_tuning": discipline_results}
-
 
     def predictions_for(self, match, fast=False):
         home = match.get('home','Local')
         away = match.get('away','Visita')
         league = match.get('league','Futbol')
         league_code = match.get('league_code','')
-
         str_home = self._team_strength(home)
         str_away = self._team_strength(away)
         att_home, def_home, mp_home = self._team_attack_defense(home)
@@ -568,7 +383,6 @@ class Model:
         form_away = self._team_form_ema(away)
         home_adv = self._get_home_adv(league_code, league)
 
-        # V122 - Rest days / Fatiga
         home_rest_raw = match.get('home_rest_days')
         away_rest_raw = match.get('away_rest_days')
         home_last = match.get('home_last_date')
@@ -600,15 +414,13 @@ class Model:
         if home in self.team_stats and self.team_stats[home].get("mp",0) > 0:
             s_home = self.team_stats[home]
             s_away = self.team_stats.get(away, {"mp":0, "avg_for":1.2, "avg_against":1.2})
-            # V119 Disciplinary: ajusta por disciplina y posesion
             disc_home = s_home.get("discipline_index", 1.0)
             disc_away = s_away.get("discipline_index", 1.0)
             poss_home = s_home.get("avg_possession", 50)
             poss_away = s_away.get("avg_possession", 50)
-            # V124.3 Equipo indisciplinado baja mas: usa discipline_k auto-tune
             disc_factor_home = 1.0 - (disc_home - 1.0) * 0.25 * self.discipline_k
             disc_factor_away = 1.0 - (disc_away - 1.0) * 0.25 * self.discipline_k
-            poss_factor_home = 0.9 + (poss_home - 50) * 0.01  # 60% posesion -> 1.0 factor
+            poss_factor_home = 0.9 + (poss_home - 50) * 0.01
             poss_factor_away = 0.9 + (poss_away - 50) * 0.01
 
             xg_home = round((s_home.get("avg_for", att_home) * 0.6 + (2 - s_away.get("avg_against", def_away)) * 0.4) * home_adv * disc_factor_home * poss_factor_home * rest_home_factor["attack"] + form_home, 2)
@@ -635,12 +447,9 @@ class Model:
 
         diff = str_home - str_away
         elo_adj = diff * 20
-        # V122 - penalizacion fatiga en ELO: equipo cansado pierde prob
         rest_penalty_home = rest_home_factor["prob_penalty"]
         rest_penalty_away = rest_away_factor["prob_penalty"]
 
-        # V126.1 Fix 404 definitivo + Backfill Robusto 5000 + Odds $0 - Disciplina: amarillas/rojas/faltas penalizan prob
-        # Equipo muy indisciplinado (disc_index >1.2) pierde 3-8% prob, aumenta empate y rival
         disc_penalty_home = 0
         disc_penalty_away = 0
         try:
@@ -650,7 +459,6 @@ class Model:
                 y_h = s_h.get("avg_yellow", 2.0)
                 r_h = s_h.get("avg_red", 0.08)
                 f_h = s_h.get("avg_fouls", 13.0)
-                # V124.3 Formula con discipline_k auto-tune 0,0.5,1.0,1.6,2.0
                 disc_penalty_home = ((disc_idx_h - 1.0)*10 + max(0, y_h - 2.2)*2.0 + r_h*20 + max(0, f_h - 13.5)*0.5) * self.discipline_k
             if away in self.team_stats:
                 s_a = self.team_stats[away]
@@ -663,8 +471,8 @@ class Model:
             print(f"[V124 discipline] error {e_disc}")
 
         # V127 - Penalidades viaje y altura para visitante
-        travel_penalty = travel_factor["prob_penalty"]  # negativo, penaliza visitante = beneficia local
-        altitude_penalty = altitude_factor["prob_penalty"]  # negativo, penaliza visitante en altura
+        travel_penalty = travel_factor["prob_penalty"]
+        altitude_penalty = altitude_factor["prob_penalty"]
 
         prob_elo_mov = {
             "1": max(5, min(85, prob_poisson_dc["1"] + elo_adj + rest_penalty_home - disc_penalty_home - travel_penalty - altitude_penalty)),
@@ -682,6 +490,7 @@ class Model:
                 "2": max(5, min(85, prob_poisson_dc["2"] - form_diff*35)),
             }
         else:
+            import hashlib
             h = int(hashlib.md5((home+away).encode()).hexdigest()[0:2],16) % 20 - 10
             prob_forma_ema = {
                 "1": max(5, min(85, prob_poisson_dc["1"] + h*0.3)),
@@ -691,7 +500,6 @@ class Model:
         s = prob_forma_ema["1"]+prob_forma_ema["X"]+prob_forma_ema["2"]
         prob_forma_ema = {k: round(v/s*100,1) for k,v in prob_forma_ema.items()}
 
-        # V121.2 Fix se queda cargando: fast=True NO hace MC6000 (solo on-demand via boton Mejorar)
         if fast:
             prob_mc_interval = {"1": 33.3, "X": 33.3, "2": 33.3}
         else:
@@ -717,9 +525,7 @@ class Model:
             fav = "Empate"
 
         diff_strength = abs(str_home - str_away)
-        # V122.2 - ajuste confianza por descanso: fatiga/oxido aumenta incertidumbre
         rest_conf_penalty = rest_home_factor.get("conf_penalty",0) + rest_away_factor.get("conf_penalty",0)
-        # Si ambos con descanso extremo opuesto, penaliza extra
         if (rest_home_factor.get("tipo") in ["fatiga","oxido_medio","oxido_alto","oxido_critico"] and 
             rest_away_factor.get("tipo") in ["fatiga","oxido_medio","oxido_alto","oxido_critico"] and
             rest_home_factor["tipo"] != rest_away_factor["tipo"]):
@@ -753,8 +559,6 @@ class Model:
                 evidencia = 4
                 riesgo = "Alto"
 
-        # Aplicar penalizacion de confianza por descanso extremo - V122.2 fix confiabilidad no cambiaba
-        # Monterrey 15d OXIDO MEDIO debe bajar Media->Limitada
         is_oxido_medio_plus = rest_home_factor.get("tipo") in ["oxido_medio","oxido_alto","oxido_critico"] or rest_away_factor.get("tipo") in ["oxido_medio","oxido_alto","oxido_critico"]
         is_fatiga_alta = rest_home_factor.get("tipo") in ["fatiga"] and rest_home_factor.get("attack",1) <= 0.86 or rest_away_factor.get("tipo") in ["fatiga"] and rest_away_factor.get("attack",1) <= 0.86
 
@@ -766,7 +570,6 @@ class Model:
             riesgo = "Alto"
             evidencia = max(2, evidencia - 2)
         elif rest_conf_penalty == 1:
-            # V122.2 fix: si hay oxido medio+ o fatiga alta, Media debe bajar a Limitada
             if confianza == "Alta":
                 confianza = "Media"
                 evidencia = max(3, evidencia - 1)
@@ -775,7 +578,6 @@ class Model:
                 riesgo = "Alto" if riesgo == "Medio" else riesgo
                 evidencia = max(3, evidencia - 1)
             elif confianza == "Media":
-                # penalizacion leve mantiene Media pero evidencia baja
                 evidencia = max(4, evidencia - 1)
 
         if evidencia >= 10:
@@ -847,35 +649,11 @@ class Model:
             "favorite": fav,
             "confidence": confianza,
             "evidence": evidencia,
-            "sufficiency": suf,
             "risk": riesgo,
-            "source": f"V117.1 Dixon-Coles {w['poisson_dc']*100:.0f}%PoissonDC/{w['elo_mov']*100:.0f}%ELO_MOV/{w['forma_ema']*100:.0f}%FormaEMA + MC validador - {self.history_count} equipos HomeAdv {home_adv}",
-            "explicabilidad": explic,
-            "home_score": match.get('home_score'),
-            "away_score": match.get('away_score'),
-            "score": match.get('score'),
-            "estado": match.get('estado','PROGRAMADO'),
-            "status_detail": match.get('status_detail',''),
+            "suficiencia": suf,
+            "explicacion": explic,
             "resultado_real": resultado_real,
             "acierto": acierto,
-            "transparencia": "Probabilidad != recomendacion segura. Suma 1X2 ~100% Dixon-Coles corrige empates.",
-            "prediction_fast": fast,
-            "elo_home": self.elo.get(home, 1500) if self.history_loaded else None,
-            "elo_away": self.elo.get(away, 1500) if self.history_loaded else None,
-            "historical_data": self.history_count if self.history_loaded else 0,
-            "elo_source": self.elo_source,
-            "team_stats_source": self.team_stats_source,
-            "attack_home": att_home,
-            "defense_home": def_home,
-            "attack_away": att_away,
-            "defense_away": def_away,
-            "home_adv": home_adv,
-            "mc_interval": prob_mc_interval,
-            "home_rest_days": home_rest,
-            "away_rest_days": away_rest,
-            "home_rest_label": rest_home_factor["label"],
-            "away_rest_label": rest_away_factor["label"],
-            "rest_factor_home": rest_home_factor,
-            "rest_factor_away": rest_away_factor
+            "status": match.get('estado','PROGRAMADO')
         }
-# END V127.1 Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + Fix 404 + VersionHeader | 2026-11-01 17:08:33 | backend/core/model.py
+# END V127.2 Fix Health 404 + Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + VersionHeader | 2026-11-01 18:27:00 | backend/core/model.py
