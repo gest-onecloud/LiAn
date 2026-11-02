@@ -1,4 +1,4 @@
-# V127.1 Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + Fix 404 + VersionHeader | 2026-11-01 17:08:33 | backend/server.py
+# V127.2 Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + Fix 404 + VersionHeader | 2026-11-02 08:00 MX | backend/server.py
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import json
 import os
@@ -1935,4 +1935,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-# END V127.1 Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + Fix 404 + VersionHeader | 2026-11-01 17:08:33 | backend/server.py
+# END V127.2 Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + Fix 404 + VersionHeader | 2026-11-02 08:00 MX | backend/server.py

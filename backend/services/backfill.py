@@ -1,9 +1,5 @@
-# V127.1 Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + Fix 404 + VersionHeader | 2026-11-01 17:08:33 | backend/services/backfill.py
+# V127.2 Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + Fix 404 + VersionHeader | 2026-11-02 08:00 MX | backend/services/backfill.py
 
-"""
-LiAn V114 - Backfill Historico Completo 15 Ligas
-Carga 2 años completos en Supabase que crece
-"""
 import os
 import time
 from datetime import date, timedelta
@@ -271,4 +267,4 @@ def start_backfill_thread(repo_supabase, days_back=730):
     t.start()
     
     return {"status": "started", "days_back": days_back, "leagues": len(LIGAS_MUNDIALES)}
-# END V127.1 Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + Fix 404 + VersionHeader | 2026-11-01 17:08:33 | backend/services/backfill.py
+# END V127.2 Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + Fix 404 + VersionHeader | 2026-11-02 08:00 MX | backend/services/backfill.py

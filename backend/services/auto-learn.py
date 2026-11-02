@@ -1,8 +1,4 @@
 
-"""
-LiAn V118 - Autoaprendizaje: aprende de errores para mejorar aciertos
-Lee predictions con acierto, ajusta pesos, home_adv, rho Dixon-Coles
-"""
 import os
 from collections import defaultdict
 from datetime import datetime

@@ -1,9 +1,5 @@
-# V127.1 Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + Fix 404 + VersionHeader | 2026-11-01 17:08:33 | backend/core/model.py
+# V127.2 Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + Fix 404 + VersionHeader | 2026-11-02 08:00 MX | backend/core/model.py
 
-"""
-LiAn V119 - Disciplinary Tarjetas Rojas/Amarillas Faltas Arbitro + AutoLearn 2859 + Dixon-Coles + ELO MOV + Forma EMA + HomeAdv por liga + MonteCarlo validador
-Fix: Poisson y MonteCarlo ya no duplican, Dixon-Coles corrige empates 0-0,1-0,0-1,1-1
-"""
 import math
 import hashlib
 import random
@@ -878,4 +874,4 @@ class Model:
             "rest_factor_home": rest_home_factor,
             "rest_factor_away": rest_away_factor
         }
-# END V127.1 Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + Fix 404 + VersionHeader | 2026-11-01 17:08:33 | backend/core/model.py
+# END V127.2 Viaje/Altura + 5714 historico + 65/25/10 k=0.5 + Fix 404 + VersionHeader | 2026-11-02 08:00 MX | backend/core/model.py

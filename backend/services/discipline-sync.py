@@ -1,8 +1,3 @@
-
-"""
-LiAn V119 - Discipline Sync: trae tarjetas, faltas, arbitro, posesion desde API-Football
-Si no hay API key, estima desde promedios de liga aprendidos en V118.2
-"""
 import os
 from datetime import datetime
 from collections import defaultdict

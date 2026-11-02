@@ -1,6 +1,3 @@
-"""
-LiAn V64.6.0 - Paso 5.5 FIX FINAL - Zona horaria + Marcador + Todos los partidos
-"""
 import time
 from datetime import datetime, date as date_obj, timedelta
 from .http_client import get_json
